@@ -4,3 +4,4 @@ twstock
 yfinance
 pandas
 websockets
+lxml
