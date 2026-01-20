@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>台股即時看板</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <div class="header-left">
+                <h1>台股即時看板</h1>
+                <span class="subtitle">TWSE Pulse</span>
+            </div>
+            <div id="market-index" class="card index-card">
+                <h2>加權指數</h2>
+                <div class="index-value" id="index-price">載入中...</div>
+                <div class="index-change" id="index-change">--</div>
+            </div>
+        </header>
+
+        <main>
+            <section class="stock-list-section">
+                <div class="section-header">
+                    <div style="display: flex; align-items: baseline; gap: 10px;">
+                        <h2>均線觀察股 (跌至支撐)</h2>
+                        <span style="color: #8b949e; font-size: 0.9em;">目前價格正好在月線 (20均) 附近徘徊</span>
+                    </div>
+                </div>
+                <!-- Dynamic Category Filter -->
+                <div id="category-filter" style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;">
+                    <!-- Buttons will be injected here -->
+                </div>
+                <div id="loading-msg" style="text-align: center; color: #8b949e; margin-top: 20px;">正在掃描市場資料，請稍候...
+                </div>
+                <div id="stock-list" class="stock-grid">
+                    <!-- Stock items will be injected here -->
+                </div>
+            </section>
+
+            <section class="chart-section hidden" id="chart-container-wrapper">
+                <div class="chart-header">
+                    <div>
+                        <h2 id="chart-title" style="margin: 0;">個股走勢圖</h2>
+                        <div id="chart-info" style="display: flex; gap: 15px; align-items: baseline; margin-top: 5px;">
+                            <span id="chart-price" style="font-size: 1.5em; font-weight: bold;">--</span>
+                            <span id="chart-change" style="font-size: 1em;">--</span>
+                        </div>
+                    </div>
+                    <button id="close-chart">關閉</button>
+                </div>
+                <div id="chart-container"></div>
+                <div class="chart-controls">
+                    <button onclick="setChartInterval('D')">日線</button>
+                    <button onclick="setChartInterval('W')">周線</button>
+                    <button onclick="setChartInterval('M')">月線</button>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="/static/script.js"></script>
+</body>
+
+</html>
