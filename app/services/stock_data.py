@@ -142,23 +142,60 @@ def get_stock_history(stock_code, interval='1d'):
         ticker = yf.Ticker(f"{stock_code}.TW")
         hist = ticker.history(period=api_period, interval=api_interval)
         
+        # Calculate Moving Averages
+        hist['MA5'] = hist['Close'].rolling(window=5).mean()
+        hist['MA10'] = hist['Close'].rolling(window=10).mean()
+        hist['MA20'] = hist['Close'].rolling(window=20).mean()
+        hist['MA60'] = hist['Close'].rolling(window=60).mean()
+        
         # Format for Lightweight Charts: { time: '2019-04-11', open: 80.01, high: 96.63, low: 76.6, close: 80.29 }
-        data = []
+        candlestick_data = []
+        ma5_data = []
+        ma10_data = []
+        ma20_data = []
+        ma60_data = []
+        
         for date, row in hist.iterrows():
             # Check for NaNs
             if pd.isna(row['Open']) or pd.isna(row['Close']):
                 continue
                 
-            # lightweight charts expects YYYY-MM-DD string for daily
-            data.append({
-                "time": date.strftime('%Y-%m-%d'),
+            time_str = date.strftime('%Y-%m-%d')
+            
+            # Candlestick data
+            candlestick_data.append({
+                "time": time_str,
                 "open": float(row['Open']),
                 "high": float(row['High']),
                 "low": float(row['Low']),
                 "close": float(row['Close']),
                 "volume": int(row['Volume'])
             })
-        return data
+            
+            # MA data (only if not NaN)
+            if not pd.isna(row['MA5']):
+                ma5_data.append({"time": time_str, "value": float(row['MA5'])})
+            if not pd.isna(row['MA10']):
+                ma10_data.append({"time": time_str, "value": float(row['MA10'])})
+            if not pd.isna(row['MA20']):
+                ma20_data.append({"time": time_str, "value": float(row['MA20'])})
+            if not pd.isna(row['MA60']):
+                ma60_data.append({"time": time_str, "value": float(row['MA60'])})
+        
+        return {
+            "candlestick": candlestick_data,
+            "ma5": ma5_data,
+            "ma10": ma10_data,
+            "ma20": ma20_data,
+            "ma60": ma60_data
+        }
     except Exception as e:
         print(f"Error history {stock_code}: {e}")
-        return []
+        return {
+            "candlestick": [],
+            "ma5": [],
+            "ma10": [],
+            "ma20": [],
+            "ma60": []
+        }
+

@@ -12,6 +12,10 @@ const closeChartBtn = document.getElementById('close-chart');
 let chart = null;
 let currentStock = null;
 let candlestickSeries = null;
+let ma5Series = null;
+let ma10Series = null;
+let ma20Series = null;
+let ma60Series = null;
 
 // Initialization
 document.addEventListener('DOMContentLoaded', () => {
@@ -239,6 +243,28 @@ function initChart() {
         wickDownColor: '#238636',  // Green for down
     });
 
+    // Add MA line series with different colors
+    ma5Series = chart.addLineSeries({
+        color: '#FFA500',  // Orange for MA5
+        lineWidth: 2,
+        title: 'MA5'
+    });
+    ma10Series = chart.addLineSeries({
+        color: '#00CED1',  // DarkTurquoise for MA10
+        lineWidth: 2,
+        title: 'MA10'
+    });
+    ma20Series = chart.addLineSeries({
+        color: '#FF1493',  // DeepPink for MA20
+        lineWidth: 2,
+        title: 'MA20'
+    });
+    ma60Series = chart.addLineSeries({
+        color: '#FFD700',  // Gold for MA60
+        lineWidth: 2,
+        title: 'MA60'
+    });
+
     new ResizeObserver(entries => {
         if (entries.length === 0 || entries[0].target !== chartContainer) { return; }
         const newRect = entries[0].contentRect;
@@ -261,15 +287,22 @@ async function loadChartData(stockCode, interval) {
         const response = await fetch(`/api/history/${stockCode}?interval=${interval}`);
         const data = await response.json();
         console.log(`[Chart Data] ${stockCode} (${interval}):`, data); // Debug Log
-        if (!data || data.length === 0) {
+
+        // Handle new response format with separate arrays
+        if (!data || !data.candlestick || data.candlestick.length === 0) {
             console.warn(`[Chart Data] No data received for ${stockCode}`);
             return;
         }
-        candlestickSeries.setData(data);
+
+        candlestickSeries.setData(data.candlestick);
+        ma5Series.setData(data.ma5 || []);
+        ma10Series.setData(data.ma10 || []);
+        ma20Series.setData(data.ma20 || []);
+        ma60Series.setData(data.ma60 || []);
         chart.timeScale().fitContent();
 
-        // Update Header Info based on latest data
-        updateChartHeader(data);
+        // Update Header Info based on latest candlestick data
+        updateChartHeader(data.candlestick);
     } catch (error) {
         console.error('Error loading chart:', error);
     }
