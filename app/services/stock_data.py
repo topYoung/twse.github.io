@@ -7,22 +7,34 @@ import twstock
 
 def get_market_index():
     """Fetches the current real-time data for Taiwan Weighted Index."""
+    """Fetches the current real-time data for Taiwan Weighted Index."""
     try:
-        # ^TWII is the ticker for Taiwan Weighted Index
-        valid_tickers = ['^TWII'] 
         ticker = yf.Ticker("^TWII")
-        # Get fast info first if possible, or Today's data
-        # 'regularMarketPrice' is often in fast_info
         
-        # fast_info is newer and faster in yfinance
-        price = ticker.fast_info.last_price
-        prev_close = ticker.fast_info.previous_close
+        # Use history to get the actual data which is often more up-to-date than fast_info
+        # Fetch 5 days to ensure we have previous day even after weekends
+        hist = ticker.history(period="5d")
         
-        change = price - prev_close
-        percent_change = (change / prev_close) * 100
+        if hist.empty:
+             # Fallback
+             return {"price": 0, "change": 0, "percent_change": 0}
+
+        # Current is the last row
+        current_price = hist['Close'].iloc[-1]
+        
+        # Previous close
+        # If we have at least 2 days, use the 2nd to last close
+        if len(hist) >= 2:
+            prev_close = hist['Close'].iloc[-2]
+        else:
+            # Fallback to metadata if history is too short (rare)
+            prev_close = ticker.info.get('previousClose', current_price)
+        
+        change = current_price - prev_close
+        percent_change = (change / prev_close) * 100 if prev_close != 0 else 0
         
         return {
-            "price": round(price, 2),
+            "price": round(current_price, 2),
             "change": round(change, 2),
             "percent_change": round(percent_change, 2)
         }
@@ -236,4 +248,29 @@ def get_stock_history(stock_code, interval='1d'):
             "ma20": [],
             "ma60": []
         }
+
+def search_stock_code(query: str):
+    """
+    Search stock by code or name using twstock.
+    Returns {code, name} or None.
+    """
+    query = query.strip()
+    
+    # 1. Direct Code Match
+    if query in twstock.codes:
+        info = twstock.codes[query]
+        return {"code": info.code, "name": info.name}
+        
+    # 2. Name Match (Iterate all)
+    # This is slightly heavy but twstock.codes is not huge (~2000 items)
+    for code, info in twstock.codes.items():
+        if info.name == query:
+             return {"code": info.code, "name": info.name}
+             
+    # 3. Partial Name Match (optional, pick first)
+    # for code, info in twstock.codes.items():
+    #    if query in info.name:
+    #         return {"code": info.code, "name": info.name}
+             
+    return None
 

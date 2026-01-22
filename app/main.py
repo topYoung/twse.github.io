@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from app.services.stock_data import get_market_index, get_filtered_stocks, get_stock_history
+from app.services.stock_data import get_market_index, get_filtered_stocks, get_stock_history, search_stock_code
 from app.services.layout_analyzer import get_all_investors_summary, get_layout_stocks
 
 app = FastAPI()
@@ -57,3 +57,10 @@ async def api_layout_stocks(investor_type: str, days: int = 90, min_score: float
         return {"error": f"無效的法人類型，請使用: {', '.join(valid_types)}"}
     
     return get_layout_stocks(investor_type, days, min_score, top_n)
+
+@app.get("/api/search")
+async def api_search(query: str):
+    result = search_stock_code(query)
+    if result:
+        return result
+    return {"error": "Not Found"}

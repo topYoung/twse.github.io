@@ -12,6 +12,7 @@ const closeChartBtn = document.getElementById('close-chart');
 let chart = null;
 let currentStock = null;
 let candlestickSeries = null;
+let candlestickSeriesRight = null; // Phantom series for Right Axis
 let ma5Series = null;
 let ma10Series = null;
 let ma20Series = null;
@@ -197,6 +198,10 @@ async function openChart(stockCode, stockName, category) {
     chartTitle.textContent = `${categoryLabel}${stockCode} (${stockName}) 走勢圖`;
     chartSection.classList.remove('hidden');
 
+    // Reset Header Info (Clear Stale Data)
+    document.getElementById('chart-price').textContent = '---';
+    document.getElementById('chart-change').textContent = '---';
+
     if (!chart) {
         initChart();
     }
@@ -216,6 +221,15 @@ async function openChart(stockCode, stockName, category) {
 
     // Reset to "Day" view by default
     currentInterval = '1d';
+
+    // Clear previous data to avoid confusion while loading
+    if (candlestickSeries) candlestickSeries.setData([]);
+    if (candlestickSeriesRight) candlestickSeriesRight.setData([]);
+    if (ma5Series) ma5Series.setData([]);
+    if (ma10Series) ma10Series.setData([]);
+    if (ma20Series) ma20Series.setData([]);
+    if (ma60Series) ma60Series.setData([]);
+
     // Manually trigger UI update for 'D'
     setChartInterval('D', null); // null will trigger text-based lookup
 
@@ -257,9 +271,10 @@ function initChart() {
             vertLines: { color: '#30363d' },
             horzLines: { color: '#30363d' },
         },
-        // Move price scale to Left
+        // Enable Right scale for dual-axis view
         rightPriceScale: {
-            visible: false,
+            visible: true,
+            borderColor: '#30363d',
         },
         leftPriceScale: {
             visible: true,
@@ -270,8 +285,8 @@ function initChart() {
             timeVisible: true,
             secondsVisible: false,
             rightOffset: 5,
-            barSpacing: 2, // Adjusted for density
-            minBarSpacing: 0.1,
+            barSpacing: 12, // Default wider spacing
+            minBarSpacing: 1,
             fixLeftEdge: true,
             fixRightEdge: true,
         },
@@ -284,6 +299,19 @@ function initChart() {
         wickUpColor: '#da3633',    // Red for up
         wickDownColor: '#238636',  // Green for down
         priceScaleId: 'left',      // Associate with left scale
+    });
+
+    // Phantom Series for Right Axis (Transparent)
+    // This allows the Right Axis to show Ticks synchronized with Left Axis
+    candlestickSeriesRight = chart.addCandlestickSeries({
+        upColor: 'rgba(255, 0, 0, 0.01)',      // Very faint/invisible
+        downColor: 'rgba(0, 255, 0, 0.01)',
+        borderVisible: false,
+        wickUpColor: 'rgba(255, 0, 0, 0.01)',
+        wickDownColor: 'rgba(0, 255, 0, 0.01)',
+        priceScaleId: 'right',
+        priceLineVisible: false, // Don't show price line
+        lastValueVisible: false, // Don't show label tag
     });
 
     // Add MA line series with different colors
@@ -371,6 +399,12 @@ async function loadChartData(stockCode, interval) {
         const data = await response.json();
         console.log(`[Chart Data] ${stockCode} (${interval}):`, data);
 
+        // Race Condition Check: Ensure current stock hasn't changed while fetching
+        if (currentStock !== stockCode) {
+            console.warn(`[Chart Data] Ignored data for ${stockCode}, user switched to ${currentStock}`);
+            return;
+        }
+
         // Handle new response format with separate arrays
         if (!data || !data.candlestick || data.candlestick.length === 0) {
             console.warn(`[Chart Data] No data received for ${stockCode}`);
@@ -387,19 +421,32 @@ async function loadChartData(stockCode, interval) {
         });
 
         candlestickSeries.setData(data.candlestick);
+
+        // Clone data for Phantom Series (Safety Ensure)
+        if (candlestickSeriesRight) {
+            const phantomData = data.candlestick.map(item => ({ ...item }));
+            candlestickSeriesRight.setData(phantomData);
+        }
+
         ma5Series.setData(data.ma5 || []);
         ma10Series.setData(data.ma10 || []);
         ma20Series.setData(data.ma20 || []);
         ma60Series.setData(data.ma60 || []);
 
-        // Removed fitContent to avoid squeezing 3 years of data into one view
-        // chart.timeScale().fitContent();
+        // Explicitly enforce Right Scale Visibility again
+        chart.applyOptions({
+            rightPriceScale: {
+                visible: true,
+                borderColor: '#30363d',
+            }
+        });
 
         // Update Header Info based on latest candlestick data
         updateChartHeader(data.candlestick);
 
         // Update Title if info is available (for Search feature)
-        if (data.info) {
+        // Re-verify currentStock in case of very fast clicks
+        if (data.info && currentStock === stockCode) {
             const categoryLabel = data.info.category ? `[${data.info.category}] ` : '';
             chartTitle.textContent = `${categoryLabel}${stockCode} (${data.info.name}) 走勢圖`;
         }
@@ -414,16 +461,28 @@ const searchInput = document.getElementById('stock-search');
 const searchBtn = document.getElementById('search-btn');
 
 if (searchBtn && searchInput) {
-    const handleSearch = () => {
+    const handleSearch = async () => {
         const query = searchInput.value.trim();
         if (!query) return;
 
-        let stockCode = query;
-        let stockName = query;
+        // 1. Resolve stock code via Backend API
+        try {
+            const response = await fetch(`/api/search?query=${encodeURIComponent(query)}`);
+            const result = await response.json();
 
-        // Call openChart
-        openChart(stockCode, stockName, '搜尋');
-        searchInput.value = '';
+            if (result.error || !result.code) {
+                alert(`找不到股票: ${query}`);
+                return;
+            }
+
+            // 2. Open Chart with resolved Code
+            openChart(result.code, result.name, '搜尋');
+            searchInput.value = '';
+
+        } catch (error) {
+            console.error('Search error:', error);
+            alert('搜尋失敗，請稍後重試');
+        }
     };
 
     searchBtn.addEventListener('click', handleSearch);
