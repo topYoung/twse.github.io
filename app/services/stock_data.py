@@ -33,13 +33,31 @@ def get_market_index():
 def calculate_ma(hist_data, window=20):
     return hist_data['Close'].rolling(window=window).mean().iloc[-1]
 
+def get_yahoo_ticker(stock_code):
+    """
+    Returns the Yahoo Finance ticker symbol for a given stock code.
+    Taipei Exchange (OTC) stocks need .TWO suffix.
+    Taiwan Stock Exchange (TWSE) stocks need .TW suffix.
+    """
+    try:
+        if stock_code in twstock.codes:
+            info = twstock.codes[stock_code]
+            if info.market == '上櫃':
+                return f"{stock_code}.TWO"
+    except Exception:
+        pass
+    
+    # Default to .TW for '上市' or unknown
+    return f"{stock_code}.TW"
+
 def process_stock(stock_code):
     """
     Fetches data for a single stock and checks if it's near MA.
     Returns dict if valid, None otherwise.
     """
     try:
-        ticker = yf.Ticker(f"{stock_code}.TW")
+        ticker_symbol = get_yahoo_ticker(stock_code)
+        ticker = yf.Ticker(ticker_symbol)
         # specific period=2mo to get enough data for MA20 or MA60
         hist = ticker.history(period="3mo")
         
@@ -133,13 +151,14 @@ def get_stock_history(stock_code, interval='1d'):
     interval: 1d, 1wk, 1mo
     """
     valid_intervals = {'1d': '1d', '1wk': '1wk', '1mo': '1mo'}
-    period_map = {'1d': '1y', '1wk': '2y', '1mo': '5y'} # Enough data for charts
+    period_map = {'1d': '3y', '1wk': '5y', '1mo': '10y'} # Increased to 3y for denser view
     
     api_interval = valid_intervals.get(interval, '1d')
     api_period = period_map.get(interval, '1y')
     
     try:
-        ticker = yf.Ticker(f"{stock_code}.TW")
+        ticker_symbol = get_yahoo_ticker(stock_code)
+        ticker = yf.Ticker(ticker_symbol)
         hist = ticker.history(period=api_period, interval=api_interval)
         
         # Calculate Moving Averages
@@ -182,7 +201,26 @@ def get_stock_history(stock_code, interval='1d'):
             if not pd.isna(row['MA60']):
                 ma60_data.append({"time": time_str, "value": float(row['MA60'])})
         
+        # Get stock info (name and category)
+        stock_name = stock_code
+        category = '其他'
+        
+        # Try to resolve Chinese name and category
+        if stock_code in twstock.codes:
+            info = twstock.codes[stock_code]
+            stock_name = info.name
+            if info.group:
+                category = info.group.replace('業', '')
+        
+        # Check sub-categories override
+        if stock_code in STOCK_SUB_CATEGORIES:
+             category = STOCK_SUB_CATEGORIES[stock_code]
+
         return {
+            "info": {
+                "name": stock_name,
+                "category": category
+            },
             "candlestick": candlestick_data,
             "ma5": ma5_data,
             "ma10": ma10_data,

@@ -2,8 +2,10 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.services.stock_data import get_market_index, get_filtered_stocks, get_stock_history
+from app.services.layout_analyzer import get_all_investors_summary, get_layout_stocks
 
 app = FastAPI()
+# Force server reload for stock_data updates
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
@@ -28,3 +30,30 @@ async def api_stocks():
 @app.get("/api/history/{stock_code}")
 async def api_history(stock_code: str, interval: str = '1d'):
     return get_stock_history(stock_code, interval)
+
+@app.get("/api/institutional-investors")
+async def api_institutional_investors(days: int = 30):
+    """
+    取得三大法人摘要資訊
+    
+    Args:
+        days: 統計天數（預設30天）
+    """
+    return get_all_investors_summary(days)
+
+@app.get("/api/layout-stocks/{investor_type}")
+async def api_layout_stocks(investor_type: str, days: int = 90, min_score: float = 30.0, top_n: int = 50):
+    """
+    取得特定法人佈局的股票清單
+    
+    Args:
+        investor_type: 'foreign'(外資), 'trust'(投信), 'dealer'(自營商)
+        days: 分析期間天數（預設90天）
+        min_score: 最低佈局評分（預設30分）
+        top_n: 回傳前N檔股票（預設50檔）
+    """
+    valid_types = ['foreign', 'trust', 'dealer']
+    if investor_type not in valid_types:
+        return {"error": f"無效的法人類型，請使用: {', '.join(valid_types)}"}
+    
+    return get_layout_stocks(investor_type, days, min_score, top_n)

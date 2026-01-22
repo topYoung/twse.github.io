@@ -223,7 +223,8 @@ header {
     border: 1px solid #30363d;
     border-radius: 16px;
     padding: 24px;
-    z-index: 1000;
+    z-index: 3001;
+    /* Higher than modal */
     box-shadow: 0 30px 60px rgba(0, 0, 0, 0.8);
     display: flex;
     flex-direction: column;
@@ -243,7 +244,7 @@ header {
 }
 
 .hidden {
-    display: none;
+    display: none !important;
 }
 
 #chart-container {
@@ -305,7 +306,300 @@ button:hover {
 }
 
 /* Hide TradingView Logo in Chart */
-#chart-container canvas+div,
+/* Hide TradingView Logo in Chart */
 #chart-container a[href*="tradingview"] {
     display: none !important;
+}
+
+/* Chart Controls Active State */
+.chart-controls button.active {
+    background-color: var(--accent-color);
+    color: white;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 8px rgba(88, 166, 255, 0.4);
+}
+
+/* === 法人佈局分析樣式 === */
+
+/* 法人佈局分析區塊 */
+.layout-analysis-section {
+    margin-top: 40px;
+    padding: 30px;
+    background-color: var(--card-bg);
+    border-radius: 12px;
+    border: 1px solid #30363d;
+}
+
+.primary-btn {
+    background: linear-gradient(135deg, var(--accent-color), #7c3aed);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    font-size: 1em;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(88, 166, 255, 0.3);
+}
+
+.primary-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(88, 166, 255, 0.5);
+}
+
+/* Modal 樣式 */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.85);
+    z-index: 3000;
+    /* 確保在圖表之上 */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    backdrop-filter: blur(4px);
+    transition: opacity 0.3s ease;
+}
+
+
+.modal-content {
+    background-color: #1c2128;
+    border: 1px solid #30363d;
+    border-radius: 16px;
+    padding: 30px;
+    max-width: 90%;
+    max-height: 90%;
+    overflow-y: auto;
+    box-shadow: 0 30px 60px rgba(0, 0, 0, 0.8);
+}
+
+.investor-modal-content {
+    width: 800px;
+}
+
+.layout-stocks-modal-content {
+    width: 1200px;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #30363d;
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 1.5em;
+}
+
+.close-modal-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.5em;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    transition: all 0.2s;
+}
+
+.close-modal-btn:hover {
+    background-color: #30363d;
+    color: var(--text-primary);
+}
+
+/* 法人網格 */
+.investor-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+/* 法人卡片 */
+.investor-card {
+    background-color: var(--card-bg);
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.investor-card:hover {
+    transform: translateY(-5px);
+    border-color: var(--accent-color);
+    box-shadow: 0 10px 20px rgba(88, 166, 255, 0.3);
+}
+
+.investor-card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.investor-icon {
+    font-size: 2em;
+}
+
+.investor-card-header h3 {
+    margin: 0;
+    font-size: 1.3em;
+}
+
+.investor-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.investor-stat {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.stat-label {
+    color: var(--text-secondary);
+    font-size: 0.9em;
+}
+
+.stat-value {
+    font-weight: 600;
+    font-size: 1em;
+}
+
+.investor-card-footer {
+    margin-top: 10px;
+    padding-top: 15px;
+    border-top: 1px solid #30363d;
+}
+
+.view-layout-btn {
+    width: 100%;
+    background-color: var(--accent-color);
+    color: white;
+    border: none;
+    padding: 10px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.view-layout-btn:hover {
+    background-color: #7c3aed;
+}
+
+/* 載入中動畫 */
+.loading-spinner {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-secondary);
+    font-size: 1.1em;
+}
+
+/* 佈局股票卡片 */
+.layout-stock-card {
+    background: linear-gradient(135deg, var(--card-bg) 0%, #1a1f26 100%);
+}
+
+.layout-stock-card:hover {
+    background: linear-gradient(135deg, #1e2329 0%, #242a32 100%);
+}
+
+.layout-score {
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.9em;
+    font-weight: bold;
+}
+
+.score-high {
+    background-color: rgba(218, 54, 51, 0.15);
+    color: var(--up-color);
+    border: 1px solid rgba(218, 54, 51, 0.3);
+}
+
+.score-medium {
+    background-color: rgba(255, 165, 0, 0.15);
+    color: #FFA500;
+    border: 1px solid rgba(255, 165, 0, 0.3);
+}
+
+.score-low {
+    background-color: rgba(255, 215, 0, 0.15);
+    color: #FFD700;
+    border: 1px solid rgba(255, 215, 0, 0.3);
+}
+
+/* 佈局統計資料 */
+.layout-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 10px;
+}
+
+.layout-stat-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.layout-stat-item .stat-label {
+    color: var(--text-secondary);
+    font-size: 0.85em;
+}
+
+.layout-stat-item .stat-value {
+    font-weight: 600;
+    font-size: 1em;
+    color: var(--text-primary);
+}
+
+/* Investor Quick Actions */
+.investor-quick-actions {
+    display: flex;
+    gap: 12px;
+}
+
+.investor-btn {
+    background-color: rgba(48, 54, 61, 0.4);
+    border: 1px solid #30363d;
+    color: var(--text-secondary);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+}
+
+.investor-btn:hover {
+    background-color: #30363d;
+    color: var(--text-primary);
+    border-color: #8b949e;
+    transform: translateY(-1px);
+}
+
+.investor-btn .icon {
+    font-size: 1.1em;
 }

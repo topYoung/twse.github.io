@@ -16,6 +16,7 @@ let ma5Series = null;
 let ma10Series = null;
 let ma20Series = null;
 let ma60Series = null;
+let chartIntervalId = null;
 
 // Initialization
 document.addEventListener('DOMContentLoaded', () => {
@@ -24,16 +25,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(fetchMarketIndex, 5000); // Update index every 5 seconds
 
     closeChartBtn.addEventListener('click', closeChart);
-
-    // 法人佈局分析按鈕 - 使用更穩健的綁定方式
-    const layoutAnalysisBtn = document.getElementById('layout-analysis-btn');
-    if (layoutAnalysisBtn) {
-        layoutAnalysisBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            openInvestorModal();
-        });
-    }
 
     // 點擊 Modal 背景關閉功能
     window.addEventListener('click', (event) => {
@@ -47,6 +38,16 @@ document.addEventListener('DOMContentLoaded', () => {
             closeLayoutStocksModal();
         }
     });
+
+    // Check for specific buttons if they exist (legacy support)
+    const layoutAnalysisBtn = document.getElementById('layout-analysis-btn');
+    if (layoutAnalysisBtn) {
+        layoutAnalysisBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openInvestorModal();
+        });
+    }
 });
 
 
@@ -215,7 +216,10 @@ async function openChart(stockCode, stockName, category) {
 
     // Reset to "Day" view by default
     currentInterval = '1d';
-    await loadChartData(stockCode, '1d');
+    // Manually trigger UI update for 'D'
+    setChartInterval('D', null); // null will trigger text-based lookup
+
+    // await loadChartData(stockCode, '1d'); // setChartInterval already calls this
 
     // One more resize after data load
     setTimeout(resizeChart, 100);
@@ -223,10 +227,6 @@ async function openChart(stockCode, stockName, category) {
     // Start polling for real-time updates
     if (chartIntervalId) clearInterval(chartIntervalId);
     chartIntervalId = setInterval(() => {
-        // Default to '1d' or current selected interval if we tracked it
-        // For simplicity, let's just re-fetch the current view
-        // But we need to know the current interval. 
-        // Let's store it.
         loadChartData(currentStock, currentInterval || '1d');
     }, 5000);
 }
@@ -241,9 +241,14 @@ function closeChart() {
 }
 
 function initChart() {
+    console.log('[Chart Init] Container dimensions:', chartContainer.clientWidth, 'x', chartContainer.clientHeight);
+    if (chartContainer.clientWidth === 0 || chartContainer.clientHeight === 0) {
+        console.warn('[Chart Init] Warning: Container has 0 dimensions!');
+    }
+
     chart = LightweightCharts.createChart(chartContainer, {
-        width: chartContainer.clientWidth,
-        height: chartContainer.clientHeight,
+        width: chartContainer.clientWidth || 800, // Fallback
+        height: chartContainer.clientHeight || 500, // Fallback
         layout: {
             background: { type: 'solid', color: '#161b22' },
             textColor: '#c9d1d9',
@@ -252,11 +257,23 @@ function initChart() {
             vertLines: { color: '#30363d' },
             horzLines: { color: '#30363d' },
         },
+        // Move price scale to Left
         rightPriceScale: {
+            visible: false,
+        },
+        leftPriceScale: {
+            visible: true,
             borderColor: '#30363d',
         },
         timeScale: {
             borderColor: '#30363d',
+            timeVisible: true,
+            secondsVisible: false,
+            rightOffset: 5,
+            barSpacing: 2, // Adjusted for density
+            minBarSpacing: 0.1,
+            fixLeftEdge: true,
+            fixRightEdge: true,
         },
     });
 
@@ -266,28 +283,34 @@ function initChart() {
         borderVisible: false,
         wickUpColor: '#da3633',    // Red for up
         wickDownColor: '#238636',  // Green for down
+        priceScaleId: 'left',      // Associate with left scale
     });
 
     // Add MA line series with different colors
+    // Line Width reduced to 1
     ma5Series = chart.addLineSeries({
         color: '#FFA500',  // Orange for MA5
-        lineWidth: 2,
-        title: 'MA5'
+        lineWidth: 1,
+        title: 'MA5',
+        priceScaleId: 'left',
     });
     ma10Series = chart.addLineSeries({
         color: '#00CED1',  // DarkTurquoise for MA10
-        lineWidth: 2,
-        title: 'MA10'
+        lineWidth: 1,
+        title: 'MA10',
+        priceScaleId: 'left',
     });
     ma20Series = chart.addLineSeries({
         color: '#FF1493',  // DeepPink for MA20
-        lineWidth: 2,
-        title: 'MA20'
+        lineWidth: 1,
+        title: 'MA20',
+        priceScaleId: 'left',
     });
     ma60Series = chart.addLineSeries({
         color: '#FFD700',  // Gold for MA60
-        lineWidth: 2,
-        title: 'MA60'
+        lineWidth: 1,
+        title: 'MA60',
+        priceScaleId: 'left',
     });
 
     new ResizeObserver(entries => {
@@ -299,11 +322,46 @@ function initChart() {
 
 let currentInterval = '1d';
 
-async function setChartInterval(interval) {
+// DOM Elements for Interval Label
+const chartIntervalLabel = document.getElementById('chart-interval-label');
+
+async function setChartInterval(interval, btnElement) {
     if (!currentStock) return;
+
     // Map Chinese UI to backend interval
     const map = { 'D': '1d', 'W': '1wk', 'M': '1mo' };
+    const labelMap = { 'D': '日線', 'W': '周線', 'M': '月線' };
+
     currentInterval = map[interval] || '1d';
+
+    // update buttons state
+    const buttons = document.querySelectorAll('.chart-controls button');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    if (btnElement) {
+        btnElement.classList.add('active');
+    } else {
+        // Find by text content if no element passed (initial load)
+        const text = labelMap[interval] || '日線';
+        buttons.forEach(btn => {
+            if (btn.textContent === text) btn.classList.add('active');
+        });
+    }
+
+    // Update Label
+    if (chartIntervalLabel) {
+        chartIntervalLabel.textContent = labelMap[interval] || '日線';
+    }
+
+    /* Temporarily removed for stability testing
+    chart.applyOptions({
+        timeScale: {
+            tickMarkFormatter: (time, tickMarkType, locale) => {
+                 return null;
+            }
+        }
+    });
+    */
+
     await loadChartData(currentStock, currentInterval);
 }
 
@@ -311,7 +369,7 @@ async function loadChartData(stockCode, interval) {
     try {
         const response = await fetch(`/api/history/${stockCode}?interval=${interval}`);
         const data = await response.json();
-        console.log(`[Chart Data] ${stockCode} (${interval}):`, data); // Debug Log
+        console.log(`[Chart Data] ${stockCode} (${interval}):`, data);
 
         // Handle new response format with separate arrays
         if (!data || !data.candlestick || data.candlestick.length === 0) {
@@ -319,18 +377,59 @@ async function loadChartData(stockCode, interval) {
             return;
         }
 
+        // Update Chart Config for Density
+        // Increase barSpacing for clearer, wider candles (User Request)
+        chart.applyOptions({
+            timeScale: {
+                barSpacing: 12, // Increased from 2 to 12 for better visibility
+                minBarSpacing: 1,
+            }
+        });
+
         candlestickSeries.setData(data.candlestick);
         ma5Series.setData(data.ma5 || []);
         ma10Series.setData(data.ma10 || []);
         ma20Series.setData(data.ma20 || []);
         ma60Series.setData(data.ma60 || []);
-        chart.timeScale().fitContent();
+
+        // Removed fitContent to avoid squeezing 3 years of data into one view
+        // chart.timeScale().fitContent();
 
         // Update Header Info based on latest candlestick data
         updateChartHeader(data.candlestick);
+
+        // Update Title if info is available (for Search feature)
+        if (data.info) {
+            const categoryLabel = data.info.category ? `[${data.info.category}] ` : '';
+            chartTitle.textContent = `${categoryLabel}${stockCode} (${data.info.name}) 走勢圖`;
+        }
+
     } catch (error) {
         console.error('Error loading chart:', error);
     }
+}
+
+// --- Search Feature ---
+const searchInput = document.getElementById('stock-search');
+const searchBtn = document.getElementById('search-btn');
+
+if (searchBtn && searchInput) {
+    const handleSearch = () => {
+        const query = searchInput.value.trim();
+        if (!query) return;
+
+        let stockCode = query;
+        let stockName = query;
+
+        // Call openChart
+        openChart(stockCode, stockName, '搜尋');
+        searchInput.value = '';
+    };
+
+    searchBtn.addEventListener('click', handleSearch);
+    searchInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') handleSearch();
+    });
 }
 
 function updateChartHeader(data) {
@@ -404,7 +503,7 @@ async function openInvestorModal() {
 function createInvestorCard(investor) {
     const card = document.createElement('div');
     card.className = 'investor-card';
-    card.onclick = () => openLayoutStocksModal(investor.type, investor.name);
+    card.onclick = () => openLayoutStocksModalV2(investor.type, investor.name);
 
     const netClass = investor.total_net_shares >= 0 ? 'up' : 'down';
     const netSign = investor.total_net_shares >= 0 ? '+' : '';
@@ -445,7 +544,7 @@ function closeInvestorModal() {
 // 開啟股票清單 Modal (V2)
 async function openLayoutStocksModalV2(investorType, investorName) {
     // Debug Alert (Temporary)
-    alert(`Debug: Opening for ${investorType} - ${investorName}`);
+    // alert(`Debug: Opening for ${investorType} - ${investorName}`);
     console.log(`[UI] Opening Layout Modal V2 for: ${investorType} (${investorName})`);
 
     // 關閉法人選擇 Modal
@@ -506,7 +605,7 @@ function createLayoutStockCard(stock, investorType) {
     const card = document.createElement('div');
     card.className = 'stock-card layout-stock-card';
     card.onclick = () => {
-        closeLayoutStocksModal();
+        // closeLayoutStocksModal(); // Maintain modal in background
         openChart(stock.stock_code, stock.stock_name, '法人佈局');
     };
 
@@ -527,7 +626,10 @@ function createLayoutStockCard(stock, investorType) {
                 <span class="stock-name">${stock.stock_name}</span>
                 <span class="stock-code-small">${stock.stock_code}</span>
             </div>
-            <span class="layout-score ${scoreClass}">${stock.layout_score}分</span>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                 <span class="badge ${stock.category === '其他' ? 'trad' : 'tech'}">${stock.category}</span>
+                 <span class="layout-score ${scoreClass}">${stock.layout_score}分</span>
+            </div>
         </div>
         <div class="card-body">
             <div class="layout-stats">
