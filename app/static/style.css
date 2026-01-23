@@ -305,6 +305,82 @@ button:hover {
     font-family: monospace;
 }
 
+/* === 起漲點偵測 (Breakout) 卡片加強 === */
+.breakout-modal-content #breakout-list.stock-grid,
+#breakout-list.stock-grid {
+    grid-template-columns: 1fr; /* 起漲清單改單欄，避免六項資訊破框 */
+}
+
+.breakout-card .card-header {
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.breakout-card .stock-identity {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    flex: 1;
+}
+
+.breakout-card .breakout-title {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+}
+
+.breakout-card .stock-name {
+    font-size: 1.5em; /* 放大紅框的主標題 */
+    line-height: 1.1;
+}
+
+.breakout-card .stock-code-small {
+    font-size: 1em;
+}
+
+.breakout-card .breakout-metrics {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+    padding-top: 2px;
+    color: var(--text-secondary);
+    font-size: 0.9em;
+}
+
+.breakout-card .breakout-metric {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.breakout-card .breakout-metric .metric-label {
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.breakout-card .breakout-metric .metric-value {
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 70%;
+}
+
+/* 小螢幕時允許指標值換行，避免被省略 */
+@media (max-width: 640px) {
+    .breakout-card .breakout-metric {
+        align-items: flex-start;
+    }
+    .breakout-card .breakout-metric .metric-value {
+        white-space: normal;
+        max-width: 60%;
+        word-break: break-word;
+    }
+}
+
 /* Hide TradingView Logo in Chart */
 /* Hide TradingView Logo in Chart */
 #chart-container a[href*="tradingview"] {

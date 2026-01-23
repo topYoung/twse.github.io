@@ -3,6 +3,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.services.stock_data import get_market_index, get_filtered_stocks, get_stock_history, search_stock_code
 from app.services.layout_analyzer import get_all_investors_summary, get_layout_stocks
+from app.services.breakout_scanner import get_breakout_stocks, get_rebound_stocks
 
 app = FastAPI()
 # Force server reload for stock_data updates
@@ -64,3 +65,17 @@ async def api_search(query: str):
     if result:
         return result
     return {"error": "Not Found"}
+
+@app.get("/api/breakout-stocks")
+async def api_breakout_stocks():
+    """
+    Get potential breakout stocks (Consolidation + Spike)
+    """
+    return get_breakout_stocks()
+
+@app.get("/api/rebound-stocks")
+async def api_rebound_stocks():
+    """
+    Get low base rebound stocks
+    """
+    return get_rebound_stocks()

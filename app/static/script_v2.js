@@ -27,16 +27,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
     closeChartBtn.addEventListener('click', closeChart);
 
-    // 點擊 Modal 背景關閉功能
     window.addEventListener('click', (event) => {
         const investorModal = document.getElementById('investor-modal');
         const layoutStocksModal = document.getElementById('layout-stocks-modal');
+        const breakoutModal = document.getElementById('breakout-modal');
 
         if (event.target === investorModal) {
             closeInvestorModal();
         }
         if (event.target === layoutStocksModal) {
             closeLayoutStocksModal();
+        }
+        if (event.target === breakoutModal) {
+            closeBreakoutModal();
+        }
+
+        const reboundModal = document.getElementById('rebound-modal');
+        if (event.target === reboundModal) {
+            closeReboundModal();
         }
     });
 
@@ -719,4 +727,196 @@ function createLayoutStockCard(stock, investorType) {
 function closeLayoutStocksModal() {
     const modal = document.getElementById('layout-stocks-modal');
     modal.classList.add('hidden');
+}
+
+
+// --- 起漲點偵測功能 (Breakout) ---
+
+async function openBreakoutModal() {
+    const modal = document.getElementById('breakout-modal');
+    const loading = document.getElementById('breakout-loading');
+    const container = document.getElementById('breakout-list');
+
+    modal.classList.remove('hidden');
+    loading.classList.remove('hidden');
+    container.innerHTML = '';
+
+    try {
+        const response = await fetch('/api/breakout-stocks');
+        const stocks = await response.json();
+
+        loading.classList.add('hidden');
+
+        if (!stocks || stocks.length === 0) {
+            container.innerHTML = '<div style="grid-column: 1/-1; text-align: center;">今日無明顯起漲訊號 (或無資料)</div>';
+            return;
+        }
+
+        stocks.forEach(stock => {
+            const card = createBreakoutCard(stock);
+            container.appendChild(card);
+        });
+
+    } catch (error) {
+        console.error('Error fetching breakouts:', error);
+        loading.classList.add('hidden');
+        container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #f85149;">掃描失敗，請稍後重試</div>';
+    }
+}
+
+function closeBreakoutModal() {
+    const modal = document.getElementById('breakout-modal');
+    modal.classList.add('hidden');
+}
+
+function createBreakoutCard(stock) {
+    const card = document.createElement('div');
+    card.className = 'stock-card breakout-card';
+    card.style.borderLeft = '4px solid #da3633'; // Highlight Red
+    card.onclick = () => {
+        // closeBreakoutModal(); // keep open?
+        openChart(stock.code, stock.name, '起漲訊號');
+    };
+
+    const changeClass = stock.change_percent >= 0 ? 'up' : 'down';
+    const sign = stock.change_percent >= 0 ? '+' : '';
+
+    // Format helpers
+    const fmtVol = (v) => {
+        if (v === null || v === undefined) return '-';
+        const n = Number(v);
+        if (!Number.isFinite(n)) return '-';
+        if (n >= 1e8) return (n / 1e8).toFixed(2) + '億';
+        if (n >= 1e4) return (n / 1e4).toFixed(1) + '萬';
+        return String(n);
+    };
+
+    const kdText = (stock.kd_k != null && stock.kd_d != null) ? `K ${stock.kd_k} / D ${stock.kd_d}` : '-';
+    const rsiText = (stock.rsi != null) ? `${stock.rsi}` : '-';
+    const macdText = (stock.macd_dif != null && stock.macd_signal != null && stock.macd_hist != null)
+        ? `DIF ${stock.macd_dif} / DEA ${stock.macd_signal} / H ${stock.macd_hist}`
+        : '-';
+    const biasText = (stock.bias20 != null) ? `${stock.bias20}%` : '-';
+    const bbText = (stock.bb_upper != null && stock.bb_mid != null && stock.bb_lower != null && stock.bb_width != null)
+        ? `上 ${stock.bb_upper} / 中 ${stock.bb_mid} / 下 ${stock.bb_lower} (寬 ${stock.bb_width}%)`
+        : '-';
+
+    card.innerHTML = `
+        <div class="card-header">
+             <div class="stock-identity">
+                <div class="breakout-title">
+                    <span class="stock-name">${stock.name}</span>
+                    <span class="stock-code-small">${stock.code}</span>
+                </div>
+                <div class="breakout-metrics">
+                    <div class="breakout-metric"><span class="metric-label">成交量</span><span class="metric-value">${fmtVol(stock.volume)}</span></div>
+                    <div class="breakout-metric"><span class="metric-label">KD</span><span class="metric-value">${kdText}</span></div>
+                    <div class="breakout-metric"><span class="metric-label">RSI</span><span class="metric-value">${rsiText}</span></div>
+                    <div class="breakout-metric"><span class="metric-label">MACD</span><span class="metric-value">${macdText}</span></div>
+                    <div class="breakout-metric"><span class="metric-label">BIAS(20)</span><span class="metric-value">${biasText}</span></div>
+                    <div class="breakout-metric"><span class="metric-label">布林(20,2)</span><span class="metric-value">${bbText}</span></div>
+                </div>
+            </div>
+            <span class="badge" style="background: #da3633; color: white;">${stock.reason}</span>
+        </div>
+        <div class="card-body">
+            <div class="price-info">
+                 <div class="stock-price">${stock.price}</div>
+                 <div class="stock-change ${changeClass}">
+                      ${sign}${stock.change_percent}%
+                 </div>
+            </div>
+            <div class="layout-stats" style="margin-top: 10px; font-size: 0.9em; color: #8b949e;">
+                <div class="layout-stat-item">
+                     <span>盤整振幅: ${stock.amplitude}%</span>
+                </div>
+                <div class="layout-stat-item">
+                     <span>量能倍增: ${stock.vol_ratio}x</span>
+                </div>
+            </div>
+        </div>
+    `;
+    return card;
+}
+
+
+// --- 低檔轉強功能 (Rebound) ---
+
+async function openReboundModal() {
+    const modal = document.getElementById('rebound-modal');
+    const loading = document.getElementById('rebound-loading');
+    const container = document.getElementById('rebound-list');
+
+    modal.classList.remove('hidden');
+    loading.classList.remove('hidden');
+    container.innerHTML = '';
+
+    try {
+        const response = await fetch('/api/rebound-stocks');
+        const stocks = await response.json();
+
+        loading.classList.add('hidden');
+
+        if (!stocks || stocks.length === 0) {
+            container.innerHTML = '<div style="grid-column: 1/-1; text-align: center;">目前無明顯低檔轉強訊號 (或無資料)</div>';
+            return;
+        }
+
+        stocks.forEach(stock => {
+            const card = createReboundCard(stock);
+            container.appendChild(card);
+        });
+
+    } catch (error) {
+        console.error('Error fetching rebounds:', error);
+        loading.classList.add('hidden');
+        container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #f85149;">掃描失敗，請稍後重試</div>';
+    }
+}
+
+function closeReboundModal() {
+    const modal = document.getElementById('rebound-modal');
+    modal.classList.add('hidden');
+}
+
+function createReboundCard(stock) {
+    const card = document.createElement('div');
+    card.className = 'stock-card';
+    card.style.borderLeft = '4px solid #d29922'; // Highlight Gold
+    card.onclick = () => {
+        openChart(stock.code, stock.name, '低檔轉強');
+    };
+
+    // Calculate diff from low
+    const lowDiffPct = ((stock.price - stock.low_60) / stock.low_60 * 100).toFixed(1);
+
+    card.innerHTML = `
+        <div class="card-header">
+             <div class="stock-identity">
+                <span class="stock-name">${stock.name}</span>
+                <span class="stock-code-small">${stock.code}</span>
+            </div>
+            <span class="badge" style="background: #d29922; color: white;">低檔轉強</span>
+        </div>
+        <div class="card-body">
+            <div class="price-info">
+                 <div class="stock-price">${stock.price}</div>
+                 <div class="stock-change up">
+                      MA20與價差: +${stock.ma_diff_pct}%
+                 </div>
+            </div>
+            <div class="layout-stats" style="margin-top: 10px; font-size: 0.9em; color: #8b949e;">
+                <div class="layout-stat-item">
+                     <span>近60日低: ${stock.low_60}</span>
+                </div>
+                <div class="layout-stat-item">
+                     <span>距低點: +${lowDiffPct}%</span>
+                </div>
+                <div class="layout-stat-item">
+                     <span>位階: ${stock.position_pct}%</span>
+                </div>
+            </div>
+        </div>
+    `;
+    return card;
 }

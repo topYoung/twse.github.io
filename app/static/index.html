@@ -37,6 +37,10 @@
                         <span style="color: #8b949e; font-size: 0.9em;">目前價格正好在月線 (20均) 附近徘徊</span>
                     </div>
                     <div class="investor-quick-actions">
+                        <button class="investor-btn" onclick="openBreakoutModal()"
+                            style="border: 1px solid #da3633; color: #da3633;">
+                            <span class="icon">🚀</span> 起漲訊號
+                        </button>
                         <button class="investor-btn" onclick="openLayoutStocksModalV2('foreign', '外資')">
                             <span class="icon">🌍</span> 外資
                         </button>
@@ -110,15 +114,42 @@
     </div>
 
     <!-- 股票清單 Modal -->
-    <div id="layout-stocks-modal" class="modal hidden">
-        <div class="modal-content layout-stocks-modal-content">
+    <div class="modal-content layout-stocks-modal-content">
+        <div class="modal-header">
+            <h2 id="layout-stocks-title">佈局股票清單</h2>
+            <button class="close-modal-btn" onclick="closeLayoutStocksModal()">✕</button>
+        </div>
+        <div id="layout-loading" class="loading-spinner hidden">資料計算中，請稍候...</div>
+        <div id="layout-stocks-list" class="stock-grid">
+            <!-- 股票清單將在這裡動態產生 -->
+        </div>
+    </div>
+    </div>
+
+    <!-- 起漲訊號 Modal -->
+    <div id="breakout-modal" class="modal hidden">
+        <div class="modal-content investor-modal-content" style="max-width: 900px;">
             <div class="modal-header">
-                <h2 id="layout-stocks-title">佈局股票清單</h2>
-                <button class="close-modal-btn" onclick="closeLayoutStocksModal()">✕</button>
+                <h2>🚀 起漲點偵測 (盤整突破)</h2>
+                <button class="close-modal-btn" onclick="closeBreakoutModal()">✕</button>
             </div>
-            <div id="layout-loading" class="loading-spinner hidden">資料計算中，請稍候...</div>
-            <div id="layout-stocks-list" class="stock-grid">
-                <!-- 股票清單將在這裡動態產生 -->
+            <div id="breakout-loading" class="loading-spinner hidden">正在掃描市場，請稍候...</div>
+            <div id="breakout-list" class="stock-grid">
+                <!-- 列表將在這裡產生 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 低檔轉強 Modal -->
+    <div id="rebound-modal" class="modal hidden">
+        <div class="modal-content investor-modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <h2>📈 低檔轉強 (低基期 + 站上均線)</h2>
+                <button class="close-modal-btn" onclick="closeReboundModal()">✕</button>
+            </div>
+            <div id="rebound-loading" class="loading-spinner hidden">正在掃描市場，請稍候...</div>
+            <div id="rebound-list" class="stock-grid">
+                <!-- 列表將在這裡產生 -->
             </div>
         </div>
     </div>
