@@ -114,16 +114,17 @@
     </div>
 
     <!-- 股票清單 Modal -->
-    <div class="modal-content layout-stocks-modal-content">
-        <div class="modal-header">
-            <h2 id="layout-stocks-title">佈局股票清單</h2>
-            <button class="close-modal-btn" onclick="closeLayoutStocksModal()">✕</button>
+    <div id="layout-stocks-modal" class="modal hidden">
+        <div class="modal-content layout-stocks-modal-content">
+            <div class="modal-header">
+                <h2 id="layout-stocks-title">佈局股票清單</h2>
+                <button class="close-modal-btn" onclick="closeLayoutStocksModal()">✕</button>
+            </div>
+            <div id="layout-loading" class="loading-spinner hidden">資料計算中，請稍候...</div>
+            <div id="layout-stocks-list" class="stock-grid">
+                <!-- 股票清單將在這裡動態產生 -->
+            </div>
         </div>
-        <div id="layout-loading" class="loading-spinner hidden">資料計算中，請稍候...</div>
-        <div id="layout-stocks-list" class="stock-grid">
-            <!-- 股票清單將在這裡動態產生 -->
-        </div>
-    </div>
     </div>
 
     <!-- 起漲訊號 Modal -->

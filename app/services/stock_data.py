@@ -4,10 +4,65 @@ from typing import List, Dict
 from concurrent.futures import ThreadPoolExecutor
 from .categories import TECH_STOCKS, TRAD_STOCKS, STOCK_SUB_CATEGORIES
 import twstock
+import urllib.request
+import json
+import ssl
+import time
+
+def fetch_mis_index_data():
+    """
+    Fetches real-time data from TWSE MIS API for the Weighted Index (tse_t00.tw).
+    Returns a dict with processed data or None if failed.
+    """
+    try:
+        # Prevent caching with timestamp
+        ts = int(time.time() * 1000)
+        url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_t00.tw&json=1&delay=0&_={ts}"
+        
+        # Bypass SSL verification for this specific request if needed (often needed for TWSE MIS)
+        context = ssl._create_unverified_context()
+        
+        with urllib.request.urlopen(url, context=context, timeout=5) as response:
+            data = response.read().decode('utf-8')
+            json_data = json.loads(data)
+            
+            if 'msgArray' in json_data and len(json_data['msgArray']) > 0:
+                info = json_data['msgArray'][0]
+                
+                # 'z' is latest trade price, 'y' is previous close
+                # Sometimes 'z' might be '-' if no trade yet, but for index it usually has value during market hours
+                price_str = info.get('z', '0')
+                prev_close_str = info.get('y', '0')
+                
+                # Check for validity
+                if price_str == '-' or prev_close_str == '-':
+                    return None
+                    
+                current_price = float(price_str)
+                prev_close = float(prev_close_str)
+                
+                change = current_price - prev_close
+                percent_change = (change / prev_close) * 100 if prev_close != 0 else 0
+                
+                return {
+                    "price": round(current_price, 2),
+                    "change": round(change, 2),
+                    "percent_change": round(percent_change, 2)
+                }
+    except Exception as e:
+        print(f"Error fetching MIS index: {e}")
+        return None
+    
+    return None
 
 def get_market_index():
     """Fetches the current real-time data for Taiwan Weighted Index."""
-    """Fetches the current real-time data for Taiwan Weighted Index."""
+    # 1. Try Real-time MIS API first
+    mis_data = fetch_mis_index_data()
+    if mis_data:
+        return mis_data
+
+    # 2. Fallback to yfinance (Delayed)
     try:
         ticker = yf.Ticker("^TWII")
         
