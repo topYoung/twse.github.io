@@ -64,7 +64,7 @@ def check_breakout(stock_code):
             return None
 
         # --- EXCLUSION LOGIC START ---
-        # Rule: Exclude if stock had > 3% rise more than 4 times in the last 7 days
+        # Rule: Exclude if stock had > 1.5% rise more than 4 times in the last 7 days
         # This prevents chasing stocks that are already overheated
         
         # Get last 7 trading days excluding today
@@ -85,7 +85,7 @@ def check_breakout(stock_code):
             recent_changes = recent_changes.tail(7)
             
             for change in recent_changes:
-                if change >= 0.03: # > 3%
+                if change >= 0.015: # > 1.5%
                     big_rise_count += 1
         
         if big_rise_count >= 4:
