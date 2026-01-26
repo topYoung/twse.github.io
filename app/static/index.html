@@ -36,7 +36,12 @@
                         <h2>均線觀察股 (跌至支撐)</h2>
                         <span style="color: #8b949e; font-size: 0.9em;">目前價格正好在月線 (20均) 附近徘徊</span>
                     </div>
-                    <div class="investor-quick-actions">
+                    <div class="investor-quick-actions" style="display: flex; gap: 8px;">
+                        <!-- 新增功能放在最右邊 -->
+                        <button class="investor-btn" onclick="openDowntrendModal()"
+                            style="border: 1px solid #238636; color: #238636;">
+                            <span class="icon">📉</span> 高檔轉弱
+                        </button>
                         <button class="investor-btn" onclick="openBreakoutModal()"
                             style="border: 1px solid #da3633; color: #da3633;">
                             <span class="icon">🚀</span> 起漲訊號
@@ -49,6 +54,15 @@
                         </button>
                         <button class="investor-btn" onclick="openLayoutStocksModalV2('dealer', '自營商')">
                             <span class="icon">🏢</span> 自營商
+                        </button>
+                        <!-- New Multi-Investor Buttons -->
+                        <button class="investor-btn" onclick="openMultiInvestorModal('all-3')"
+                            style="border: 1px solid #d29922; color: #d29922;">
+                            <span class="icon">🌟</span> 3大法人同買
+                        </button>
+                        <button class="investor-btn" onclick="openMultiInvestorModal('any-2')"
+                            style="border: 1px solid #a371f7; color: #a371f7;">
+                            <span class="icon">🤝</span> 2法人同買
                         </button>
                     </div>
                 </div>
@@ -150,6 +164,34 @@
             </div>
             <div id="rebound-loading" class="loading-spinner hidden">正在掃描市場，請稍候...</div>
             <div id="rebound-list" class="stock-grid">
+                <!-- 列表將在這裡產生 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 高檔轉弱 Modal -->
+    <div id="downtrend-modal" class="modal hidden">
+        <div class="modal-content investor-modal-content" style="max-width: 1000px;">
+            <div class="modal-header">
+                <h2>📉 高檔轉弱 (連漲後轉弱 + K&lt;D)</h2>
+                <button class="close-modal-btn" onclick="closeDowntrendModal()">✕</button>
+            </div>
+            <div id="downtrend-loading" class="loading-spinner hidden">正在掃描市場，請稍候...</div>
+            <div id="downtrend-list" class="stock-grid">
+                <!-- 列表將在這裡產生 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 多法人同買 Modal -->
+    <div id="multi-investor-modal" class="modal hidden">
+        <div class="modal-content investor-modal-content" style="max-width: 1000px;">
+            <div class="modal-header">
+                <h2 id="multi-investor-title">🌟 多法人同買</h2>
+                <button class="close-modal-btn" onclick="closeMultiInvestorModal()">✕</button>
+            </div>
+            <div id="multi-investor-loading" class="loading-spinner hidden">正在分析交集資料，請稍候...</div>
+            <div id="multi-investor-list" class="stock-grid">
                 <!-- 列表將在這裡產生 -->
             </div>
         </div>

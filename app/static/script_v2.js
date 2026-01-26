@@ -51,6 +51,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (event.target === downtrendModal) {
             closeDowntrendModal();
         }
+
+        const multiInvestorModal = document.getElementById('multi-investor-modal');
+        if (event.target === multiInvestorModal) {
+            closeMultiInvestorModal();
+        }
     });
 
     // Check for specific buttons if they exist (legacy support)
@@ -1022,6 +1027,117 @@ function createDowntrendCard(stock) {
                 <div style="grid-column: 1/-1;">MACD: <span style="color: #c9d1d9;">${macdText}</span></div>
                 <div>乖離(20): <span style="color: #c9d1d9;">${biasText}</span></div>
                 <div style="grid-column: 1/-1;">布林(20,2): <span style="color: #c9d1d9;">${bbText}</span></div>
+            </div>
+        </div>
+    `;
+
+    return card;
+}
+
+
+// --- 多法人同買功能 (Multi-Investor Intersection) ---
+
+async function openMultiInvestorModal(mode) {
+    const modal = document.getElementById('multi-investor-modal');
+    const title = document.getElementById('multi-investor-title');
+    const loading = document.getElementById('multi-investor-loading');
+    const container = document.getElementById('multi-investor-list');
+
+    modal.classList.remove('hidden');
+    loading.classList.remove('hidden');
+    container.innerHTML = '';
+
+    const label = mode === 'all-3' ? '🌟 3大法人同買' : '🤝 2法人同買';
+    title.textContent = label;
+
+    try {
+        const response = await fetch(`/api/layout-stocks/intersection/${mode}?days=90&min_score=30&top_n=50`);
+        const stocks = await response.json();
+
+        loading.classList.add('hidden');
+
+        if (stocks.error) {
+            container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #f85149;">${stocks.error}</div>`;
+            return;
+        }
+
+        if (!stocks || stocks.length === 0) {
+            container.innerHTML = '<div style="grid-column: 1/-1; text-align: center;">目前無符合條件的股票</div>';
+            return;
+        }
+
+        stocks.forEach(stock => {
+            const card = createMultiLayoutCard(stock, mode);
+            container.appendChild(card);
+        });
+
+    } catch (error) {
+        console.error('Error fetching multi-investor stocks:', error);
+        loading.classList.add('hidden');
+        container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #f85149;">掃描失敗，請稍後重試</div>';
+    }
+}
+
+function closeMultiInvestorModal() {
+    const modal = document.getElementById('multi-investor-modal');
+    modal.classList.add('hidden');
+}
+
+function createMultiLayoutCard(stock, mode) {
+    const card = document.createElement('div');
+    card.className = 'stock-card layout-stock-card';
+    // Highlight border based on mode
+    card.style.borderLeft = mode === 'all-3' ? '4px solid #d29922' : '4px solid #a371f7';
+
+    card.onclick = () => {
+        openChart(stock.stock_code, stock.stock_name, '多法人佈局');
+    };
+
+    const netClass = stock.total_net >= 0 ? 'up' : 'down';
+    const netSign = stock.total_net >= 0 ? '+' : '';
+
+    // Create tags for active investors
+    let tagsHtml = '';
+    const tagColors = { '外資': '#238636', '投信': '#da3633', '自營商': '#1f6feb' };
+
+    if (stock.active_investors) {
+        stock.active_investors.forEach(inv => {
+            const color = tagColors[inv] || '#8b949e';
+            tagsHtml += `<span class="badge" style="background:${color}; color:white; margin-right:4px;">${inv}</span>`;
+        });
+    }
+
+    // 評分顏色
+    let scoreClass = 'score-low';
+    if (stock.combined_score >= 100) scoreClass = 'score-high'; // Combined score will be higher
+    else if (stock.combined_score >= 60) scoreClass = 'score-medium';
+
+    card.innerHTML = `
+        <div class="card-header">
+            <div class="stock-identity">
+                <span class="stock-name">${stock.stock_name}</span>
+                <span class="stock-code-small">${stock.stock_code}</span>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                 <span class="badge ${stock.category === '其他' ? 'trad' : 'tech'}">${stock.category}</span>
+                 <span class="layout-score ${scoreClass}">總分${stock.combined_score}</span>
+            </div>
+        </div>
+        
+        <div class="investor-tags" style="margin: 8px 16px;">
+            ${tagsHtml}
+        </div>
+
+        <div class="card-body">
+            <div class="layout-stats">
+                <div class="layout-stat-item">
+                    <span class="stat-label">參與法人數</span>
+                    <span class="stat-value">${stock.investor_count}</span>
+                </div>
+                <div class="layout-stat-item">
+                    <span class="stat-label">累積總淨買超</span>
+                    <span class="stat-value ${netClass}">${netSign}${(stock.total_net / 1000).toFixed(1)}千股</span>
+                </div>
             </div>
         </div>
     `;

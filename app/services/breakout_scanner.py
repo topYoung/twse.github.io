@@ -62,6 +62,35 @@ def check_breakout(stock_code):
         # Threshold: 12% box (adjustable)
         if box_amplitude > 0.12: 
             return None
+
+        # --- EXCLUSION LOGIC START ---
+        # Rule: Exclude if stock had > 3% rise more than 4 times in the last 7 days
+        # This prevents chasing stocks that are already overheated
+        
+        # Get last 7 trading days excluding today
+        recent_7_days = hist.iloc[-8:-1] 
+        
+        big_rise_count = 0
+        if not recent_7_days.empty:
+            # We need day-over-day change for these 7 days. 
+            # Note: hist contains 'Close' for each day.
+            # pct_change() computes change from previous element.
+            
+            # Use data from -9 to -1 to get full 7 days change (since first element needs previous to calc change)
+            # Or easier: just take pct_change of a slice and count
+            recent_changes = hist['Close'].iloc[-9:-1].pct_change().dropna()
+            
+            # Allow some tolerance for "last 7 days" window mapping, 
+            # taking last 7 computed changes
+            recent_changes = recent_changes.tail(7)
+            
+            for change in recent_changes:
+                if change >= 0.03: # > 3%
+                    big_rise_count += 1
+        
+        if big_rise_count >= 4:
+            return None
+        # --- EXCLUSION LOGIC END ---
             
         # 2. Check Breakout Signal (price action)
         current_price = today['Close']
@@ -89,7 +118,7 @@ def check_breakout(stock_code):
         # - KD/RSI/MACD aligned (参考技术指标常用解释)
         # - BB squeeze (optional) to favor "盘整后突破"
         price_break = current_price > (cons_high * 1.01)
-        strong_spike = change_percent >= 4.0
+        strong_spike = change_percent >= 3.0
 
         # Basic indicator alignment
         kd_ok = (k is not None and d is not None and k >= d and k >= 20)
@@ -260,5 +289,122 @@ def check_rebound(stock_code):
             "ma_diff_pct": round(ma_diff * 100, 1),
             "category": category
         }
+    except Exception:
+        return None
+
+def get_downtrend_stocks():
+    """
+    Scans for stocks that:
+    1. Are at a relatively high level (Price > MA20)
+    2. Showing signs of weakness after strength (Consecutive rises OR High RSI)
+    3. Reversal signal (K < D)
+    """
+    keys_from_map = list(STOCK_SUB_CATEGORIES.keys())
+    all_stocks = list(set(TECH_STOCKS + TRAD_STOCKS + keys_from_map))
+    
+    results = []
+    
+    with ThreadPoolExecutor(max_workers=50) as executor:
+        futures = [executor.submit(check_downtrend, code) for code in all_stocks]
+        for future in futures:
+            res = future.result()
+            if res:
+                results.append(res)
+    
+    # Sort by RSI desc (High RSI means more overbought)
+    results.sort(key=lambda x: x['rsi'] if x['rsi'] is not None else 0, reverse=True)
+    return results
+
+def check_downtrend(stock_code):
+    try:
+        ticker_symbol = get_yahoo_ticker(stock_code)
+        ticker = yf.Ticker(ticker_symbol)
+        
+        # Need history for indicators
+        hist = ticker.history(period="3mo")
+        
+        if len(hist) < 60:
+            return None
+            
+        today = hist.iloc[-1]
+        current_price = today['Close']
+        
+        # 0. Basic Trend Check: Must be above MA20 (High Level context)
+        # If it's already below MA20, it's not a "high level" reversal, it's already weak.
+        ma20 = hist['Close'].rolling(window=20).mean().iloc[-1]
+        if current_price < ma20:
+             return None
+             
+        # 1. Indicator Check: K < D (Bearish)
+        k, d = compute_kd(hist)
+        if k is None or d is None:
+            return None
+            
+        # Condition: K < D
+        if not (k < d):
+            return None
+            
+        # Refinement: K should be somewhat high (> 50) to filter out bottom fishing noise
+        if k < 50:
+            return None
+            
+        # 2. Recent Strength Check (Why "Reversal"?)
+        # A: RSI > 60 (Recently strong)
+        # B: Consistent rises in recent days (e.g. 3 of last 5 days were Up)
+        
+        rsi = compute_rsi(hist["Close"])
+        rsi_ok = (rsi is not None and rsi > 60)
+        
+        # Check consecutive rises in last 5 days (excluding today)
+        recent_5 = hist.iloc[-6:-1]
+        rise_count = 0
+        if not recent_5.empty:
+            changes = recent_5['Close'].pct_change().dropna()
+            rise_count = len([c for c in changes if c > 0])
+            
+        consecutive_ok = (rise_count >= 3)
+        
+        # Must satisfy at least one "Strength" condition + K<D
+        if not (rsi_ok or consecutive_ok):
+            return None
+            
+        # 3. Gather Other Indicators for Display
+        macd_dif, macd_signal, macd_hist = compute_macd(hist["Close"])
+        bias20 = compute_bias(hist["Close"], ma_period=20)
+        bb_upper, bb_mid, bb_lower, bb_width = compute_bollinger(hist["Close"], period=20, std_mult=2.0)
+        
+        today_vol = int(today["Volume"]) if not pd.isna(today["Volume"]) else 0
+        
+        # Get Name
+        import twstock
+        name = stock_code
+        category = '其他'
+        if stock_code in STOCK_SUB_CATEGORIES:
+             category = STOCK_SUB_CATEGORIES[stock_code]
+        if stock_code in twstock.codes:
+            info = twstock.codes[stock_code]
+            name = info.name
+            if category == '其他' and info.group:
+                category = info.group.replace('業', '')
+
+        return {
+            "code": stock_code,
+            "name": name,
+            "category": category,
+            "price": round(float(current_price), 2),
+            "change_percent": round(float((today['Close'] - hist.iloc[-2]['Close'])/hist.iloc[-2]['Close']*100), 2),
+            "volume": today_vol,
+            "kd_k": round(k, 1),
+            "kd_d": round(d, 1),
+            "rsi": round(rsi, 1) if rsi else None,
+            "macd_dif": round(macd_dif, 3) if macd_dif else None,
+            "macd_signal": round(macd_signal, 3) if macd_signal else None,
+            "macd_hist": round(macd_hist, 3) if macd_hist else None,
+            "bias20": round(bias20, 2) if bias20 else None,
+            "bb_upper": round(bb_upper, 2) if bb_upper else None,
+            "bb_lower": round(bb_lower, 2) if bb_lower else None,
+            "bb_width": round(bb_width * 100, 2) if bb_width else None
+        }
+
     except Exception:
         return None

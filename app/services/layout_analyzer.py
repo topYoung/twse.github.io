@@ -251,3 +251,75 @@ def get_all_investors_summary(days: int = 30) -> List[Dict]:
             continue
     
     return summaries
+
+
+def get_multi_investor_layout(mode: str = 'all-3', days: int = 90, min_score: float = 30.0, top_n: int = 50) -> List[Dict]:
+    """
+    取得多法人同時佈局的股票
+    
+    Args:
+        mode: 'all-3' (三法人同買) 或 'any-2' (任二法人同買)
+    """
+    investors = ['foreign', 'trust', 'dealer']
+    layout_results = {}
+    
+    # 1. 獲取所有法人的佈局清單
+    for inv in investors:
+        # 使用稍低的門檻來獲取候選名單，確保交集能找到
+        # 若個別評分太高，交集會很少
+        stocks = get_layout_stocks(inv, days, min_score, top_n=200) # 先拿多一點做交集
+        
+        # 建立 map {code: data}
+        stock_map = {}
+        for s in stocks:
+            stock_map[s['stock_code']] = s
+        layout_results[inv] = stock_map
+            
+    # 2. 尋找交集
+    all_codes = set()
+    for inv in investors:
+        all_codes.update(layout_results[inv].keys())
+        
+    final_results = []
+    
+    for code in all_codes:
+        active_investors = []
+        combined_score = 0
+        combined_net = 0
+        stock_name = ""
+        category = "其他"
+        
+        for inv in investors:
+            if code in layout_results[inv]:
+                data = layout_results[inv][code]
+                active_investors.append(INVESTOR_NAMES[inv])
+                combined_score += data['layout_score']
+                combined_net += data['total_net']
+                stock_name = data['stock_name'] # 任意一個有名稱就好
+                category = data.get('category', '其他')
+        
+        # 判斷條件
+        is_match = False
+        if mode == 'all-3':
+            if len(active_investors) == 3:
+                is_match = True
+        elif mode == 'any-2':
+            if len(active_investors) >= 2: # 包含 3 的情況
+                is_match = True
+                
+        if is_match:
+            final_results.append({
+                'stock_code': code,
+                'stock_name': stock_name,
+                'category': category,
+                'active_investors': active_investors,
+                'investor_count': len(active_investors),
+                'combined_score': round(combined_score, 1),
+                'total_net': combined_net,
+                'details': {inv: layout_results[inv][code] for inv in investors if code in layout_results[inv]}
+            })
+            
+    # 3. 排序 (依據參與法人數、總分)
+    final_results.sort(key=lambda x: (x['investor_count'], x['combined_score']), reverse=True)
+    
+    return final_results[:top_n]

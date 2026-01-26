@@ -2,8 +2,8 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.services.stock_data import get_market_index, get_filtered_stocks, get_stock_history, search_stock_code
-from app.services.layout_analyzer import get_all_investors_summary, get_layout_stocks
-from app.services.breakout_scanner import get_breakout_stocks, get_rebound_stocks
+from app.services.layout_analyzer import get_all_investors_summary, get_layout_stocks, get_multi_investor_layout
+from app.services.breakout_scanner import get_breakout_stocks, get_rebound_stocks, get_downtrend_stocks
 
 app = FastAPI()
 # Force server reload for stock_data updates
@@ -79,3 +79,21 @@ async def api_rebound_stocks():
     Get low base rebound stocks
     """
     return get_rebound_stocks()
+
+@app.get("/api/downtrend-stocks")
+async def api_downtrend_stocks():
+    """
+    Get high level reversal stocks (Downtrend)
+    """
+    return get_downtrend_stocks()
+
+@app.get("/api/layout-stocks/intersection/{mode}")
+async def api_layout_intersection(mode: str, days: int = 90, min_score: float = 30.0, top_n: int = 50):
+    """
+    Get multi-investor layout stocks.
+    mode: 'all-3' or 'any-2'
+    """
+    if mode not in ['all-3', 'any-2']:
+        return {"error": "Invalid mode. Use 'all-3' or 'any-2'"}
+        
+    return get_multi_investor_layout(mode, days, min_score, top_n)
