@@ -40,6 +40,10 @@ def fetch_mis_index_data():
                     
                 current_price = float(price_str)
                 prev_close = float(prev_close_str)
+
+                # Fix: If pre-market or error causes price to be 0, return None to trigger fallback
+                if current_price <= 0:
+                    return None
                 
                 change = current_price - prev_close
                 percent_change = (change / prev_close) * 100 if prev_close != 0 else 0

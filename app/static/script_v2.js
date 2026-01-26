@@ -7,6 +7,7 @@ const chartSection = document.getElementById('chart-container-wrapper');
 const chartContainer = document.getElementById('chart-container');
 const chartTitle = document.getElementById('chart-title');
 const closeChartBtn = document.getElementById('close-chart');
+const reboundModal = document.getElementById('rebound-modal');
 
 // State
 let chart = null;
@@ -42,9 +43,13 @@ document.addEventListener('DOMContentLoaded', () => {
             closeBreakoutModal();
         }
 
-        const reboundModal = document.getElementById('rebound-modal');
         if (event.target === reboundModal) {
             closeReboundModal();
+        }
+
+        const downtrendModal = document.getElementById('downtrend-modal');
+        if (event.target === downtrendModal) {
+            closeDowntrendModal();
         }
     });
 
@@ -918,5 +923,108 @@ function createReboundCard(stock) {
             </div>
         </div>
     `;
+    return card;
+}
+
+// --- 高檔轉弱 (Downtrend) ---
+
+async function openDowntrendModal() {
+    const modal = document.getElementById('downtrend-modal');
+    const loading = document.getElementById('downtrend-loading');
+    const container = document.getElementById('downtrend-list');
+
+    modal.classList.remove('hidden');
+    loading.classList.remove('hidden');
+    container.innerHTML = '';
+
+    try {
+        const response = await fetch('/api/downtrend-stocks');
+        const stocks = await response.json();
+
+        loading.classList.add('hidden');
+
+        if (!stocks || stocks.length === 0) {
+            container.innerHTML = '<div style="grid-column: 1/-1; text-align: center;">目前無高檔轉弱訊號</div>';
+            return;
+        }
+
+        stocks.forEach(stock => {
+            const card = createDowntrendCard(stock);
+            container.appendChild(card);
+        });
+
+    } catch (error) {
+        console.error('Error fetching downtrends:', error);
+        loading.classList.add('hidden');
+        container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #f85149;">掃描失敗，請稍後重試</div>';
+    }
+}
+
+function closeDowntrendModal() {
+    const modal = document.getElementById('downtrend-modal');
+    modal.classList.add('hidden');
+}
+
+function createDowntrendCard(stock) {
+    const card = document.createElement('div');
+    card.className = 'stock-card downtrend-card';
+    card.style.borderLeft = '4px solid #238636'; // Green for Bearish/Drop
+    card.onclick = () => {
+        openChart(stock.code, stock.name, '高檔轉弱');
+    };
+
+    const changeClass = stock.change_percent >= 0 ? 'up' : 'down';
+    const sign = stock.change_percent >= 0 ? '+' : '';
+
+    // Format helpers
+    const fmtVol = (v) => {
+        if (v === null || v === undefined) return '-';
+        const n = Number(v);
+        if (!Number.isFinite(n)) return '-';
+        if (n >= 1e8) return (n / 1e8).toFixed(2) + '億';
+        if (n >= 1e4) return (n / 1e4).toFixed(1) + '萬';
+        return String(n);
+    };
+
+    const kdText = (stock.kd_k != null && stock.kd_d != null) ? `K <span style="color:#238636">${stock.kd_k}</span> / D ${stock.kd_d}` : '-';
+    const rsiText = (stock.rsi != null) ? `${stock.rsi}` : '-';
+    const macdText = (stock.macd_dif != null && stock.macd_signal != null && stock.macd_hist != null)
+        ? `DIF ${stock.macd_dif} / DEA ${stock.macd_signal} / H ${stock.macd_hist}`
+        : '-';
+    const biasText = (stock.bias20 != null) ? `${stock.bias20}%` : '-';
+    const bbText = (stock.bb_upper != null && stock.bb_mid != null && stock.bb_lower != null && stock.bb_width != null)
+        ? `Up ${stock.bb_upper} / Low ${stock.bb_lower} / W ${stock.bb_width}%`
+        : '-';
+
+    card.innerHTML = `
+        <div class="card-header">
+            <div class="stock-identity">
+                <span class="stock-name">${stock.name}</span>
+                <span class="stock-code-small">${stock.code}</span>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <span class="badge ${stock.category === '其他' ? 'trad' : 'tech'}">${stock.category}</span>
+                <span class="badge" style="background:#238636; color:white;">轉弱</span>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="price-info">
+                <div class="stock-price">${stock.price}</div>
+                <div class="stock-change ${changeClass}">
+                    ${sign}${stock.change_percent}%
+                </div>
+            </div>
+            
+            <div class="breakout-stats" style="margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.9em; color: #8b949e;">
+                <div>成交量: <span style="color: #c9d1d9;">${fmtVol(stock.volume)}</span></div>
+                <div>RSI: <span style="color: #c9d1d9;">${rsiText}</span></div>
+                <div style="grid-column: 1/-1;">KD: <span style="color: #c9d1d9;">${kdText}</span></div>
+                <div style="grid-column: 1/-1;">MACD: <span style="color: #c9d1d9;">${macdText}</span></div>
+                <div>乖離(20): <span style="color: #c9d1d9;">${biasText}</span></div>
+                <div style="grid-column: 1/-1;">布林(20,2): <span style="color: #c9d1d9;">${bbText}</span></div>
+            </div>
+        </div>
+    `;
+
     return card;
 }
