@@ -7,6 +7,26 @@
     <title>台股即時看板</title>
     <link rel="stylesheet" href="/static/style.css">
     <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: #e6edf3;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .checkbox-label input[type="checkbox"] {
+            accent-color: #1f6feb;
+            width: 16px;
+            height: 16px;
+        }
+
+        .checkbox-label:hover {
+            color: #58a6ff;
+        }
+    </style>
 </head>
 
 <body>
@@ -66,51 +86,91 @@
                         </button>
                     </div>
                 </div>
-                <!-- Dynamic Category Filter -->
-                <div id="category-filter" style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;">
-                    <!-- Buttons will be injected here -->
-                </div>
+    </div>
 
-                <div id="loading-msg" style="text-align: center; color: #8b949e; margin-top: 20px;">正在掃描市場資料，請稍候...
-                </div>
-                <div id="stock-list" class="stock-grid">
-                    <!-- Stock items will be injected here -->
-                </div>
-            </section>
+    <!-- Comprehensive Analysis Section -->
+    <div class="analysis-toolbar"
+        style="background: #161b22; padding: 15px; border-radius: 6px; border: 1px solid #30363d; margin-bottom: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; cursor: pointer;"
+            onclick="toggleAnalysisPanel()">
+            <h3 style="margin: 0; display: flex; align-items: center; gap: 8px;">
+                <span>🔍 綜合篩選 (多策略交集)</span>
+                <span id="analysis-toggle-icon" style="font-size: 0.8em; color: #8b949e;">▼</span>
+            </h3>
+            <button class="investor-btn" onclick="event.stopPropagation(); runComprehensiveAnalysis()"
+                style="padding: 4px 12px; font-size: 0.9em; background: #1f6feb; border: none; color: white;">
+                開始分析
+            </button>
+        </div>
+
+        <div id="analysis-options" class="hidden"
+            style="display: flex; flex-wrap: wrap; gap: 15px; padding-top: 10px; border-top: 1px solid #30363d;">
+            <label class="checkbox-label">
+                <input type="checkbox" name="strategy" value="ma" checked> 均線觀察 (跌至支撐)
+            </label>
+            <label class="checkbox-label">
+                <input type="checkbox" name="strategy" value="breakout"> 起漲訊號 (盤整突破)
+            </label>
+            <label class="checkbox-label">
+                <input type="checkbox" name="strategy" value="rebound"> 低檔轉強
+            </label>
+            <label class="checkbox-label">
+                <input type="checkbox" name="strategy" value="downtrend"> 高檔轉弱
+            </label>
+            <label class="checkbox-label">
+                <input type="checkbox" name="strategy" value="investor3"> 3大法人同買
+            </label>
+            <label class="checkbox-label">
+                <input type="checkbox" name="strategy" value="investor2"> 2法人同買
+            </label>
+        </div>
+    </div>
+
+    <!-- Dynamic Category Filter -->
+    <div id="category-filter" style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;">
+        <!-- Buttons will be injected here -->
+    </div>
+
+    <div id="loading-msg" style="text-align: center; color: #8b949e; margin-top: 20px;">正在掃描市場資料，請稍候...
+    </div>
+    <div id="stock-list" class="stock-grid">
+        <!-- Stock items will be injected here -->
+    </div>
+    </section>
 
 
-            <section class="chart-section hidden" id="chart-container-wrapper">
-                <div class="chart-header">
-                    <div style="display: flex; align-items: baseline; gap: 10px;">
-                        <h2 id="chart-title" style="margin: 0;">個股走勢圖</h2>
-                        <span id="chart-interval-label"
-                            style="color: #58a6ff; font-weight: bold; font-size: 1.1em; border: 1px solid #30363d; padding: 2px 8px; border-radius: 4px; background: #0d1117;">日線</span>
-                    </div>
-                    <div id="chart-info" style="display: flex; gap: 15px; align-items: baseline; margin-top: 5px;">
-                        <span id="chart-price" style="font-size: 1.5em; font-weight: bold;">--</span>
-                        <span id="chart-change" style="font-size: 1em;">--</span>
-                    </div>
-                </div>
-                <button id="close-chart">關閉</button>
-                <div id="chart-container"></div>
-                <!-- MA Legend -->
-                <div class="ma-legend">
-                    <span class="ma-legend-item"><span class="ma-dot" style="background: #FFA500;"></span>MA5
-                        (5日線)</span>
-                    <span class="ma-legend-item"><span class="ma-dot" style="background: #00CED1;"></span>MA10
-                        (10日線)</span>
-                    <span class="ma-legend-item"><span class="ma-dot" style="background: #FF1493;"></span>MA20
-                        (20日線)</span>
-                    <span class="ma-legend-item"><span class="ma-dot" style="background: #FFD700;"></span>MA60
-                        (60日線)</span>
-                </div>
-                <div class="chart-controls">
-                    <button onclick="setChartInterval('D')">日線</button>
-                    <button onclick="setChartInterval('W')">周線</button>
-                    <button onclick="setChartInterval('M')">月線</button>
-                </div>
-            </section>
-        </main>
+    <section class="chart-section hidden" id="chart-container-wrapper">
+        <div class="chart-header">
+            <div style="display: flex; align-items: baseline; gap: 10px;">
+                <h2 id="chart-title" style="margin: 0;">個股走勢圖</h2>
+                <span id="chart-interval-label"
+                    style="color: #58a6ff; font-weight: bold; font-size: 1.1em; border: 1px solid #30363d; padding: 2px 8px; border-radius: 4px; background: #0d1117;">日線</span>
+            </div>
+            <div id="chart-info" style="display: flex; gap: 15px; align-items: baseline; margin-top: 5px;">
+                <span id="chart-price" style="font-size: 1.5em; font-weight: bold;">--</span>
+                <span id="chart-change" style="font-size: 1em;">--</span>
+            </div>
+        </div>
+        <button id="close-chart">關閉</button>
+        <div id="chart-container"></div>
+        <!-- MA Legend -->
+        <div class="ma-legend">
+            <span class="ma-legend-item"><span class="ma-dot" style="background: #FFA500;"></span>MA5
+                (5日線)</span>
+            <span class="ma-legend-item"><span class="ma-dot" style="background: #00CED1;"></span>MA10
+                (10日線)</span>
+            <span class="ma-legend-item"><span class="ma-dot" style="background: #FF1493;"></span>MA20
+                (20日線)</span>
+            <span class="ma-legend-item"><span class="ma-dot" style="background: #FFD700;"></span>MA60
+                (60日線)</span>
+        </div>
+        <div class="chart-controls">
+            <button onclick="setChartInterval('D')">日線</button>
+            <button onclick="setChartInterval('W')">周線</button>
+            <button onclick="setChartInterval('M')">月線</button>
+        </div>
+    </section>
+    </main>
     </div>
 
     <!-- 將 Modal 移至 Body 最外層，確保不被 Container 限制 -->

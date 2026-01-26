@@ -174,7 +174,7 @@ function filterStocks(stocks, category) {
                 <div class="price-info">
                     <div class="stock-price">${stock.price}</div>
                     <div class="stock-change ${priceClass}">
-                         MA20: ${stock.ma20} (${stock.diff_percent}%)
+                         ${renderStockDetailLine(stock)}
                     </div>
                 </div>
                 <div class="sparkline-container">
@@ -1143,4 +1143,153 @@ function createMultiLayoutCard(stock, mode) {
     `;
 
     return card;
+}
+
+
+// --- 綜合分析功能 (Comprehensive Analysis) ---
+
+function toggleAnalysisPanel() {
+    const list = document.getElementById('analysis-options');
+    const icon = document.getElementById('analysis-toggle-icon');
+    if (list.classList.contains('hidden')) {
+        list.classList.remove('hidden');
+        icon.textContent = '▲';
+    } else {
+        list.classList.add('hidden');
+        icon.textContent = '▼';
+    }
+}
+
+async function runComprehensiveAnalysis() {
+    const checkboxes = document.querySelectorAll('input[name="strategy"]:checked');
+    const selectedStrategies = Array.from(checkboxes).map(cb => cb.value);
+
+    if (selectedStrategies.length === 0) {
+        alert('請至少選擇一種篩選策略');
+        return;
+    }
+
+    // Show loading
+    const stockListEl = document.getElementById('stock-list');
+    const loadingMsg = document.getElementById('loading-msg');
+    stockListEl.innerHTML = '';
+    loadingMsg.style.display = 'block';
+    loadingMsg.textContent = '正在進行綜合分析...';
+
+    // API Mapping
+    const apiMap = {
+        'ma': '/api/stocks',
+        'breakout': '/api/breakout-stocks',
+        'rebound': '/api/rebound-stocks',
+        'downtrend': '/api/downtrend-stocks',
+        'investor3': '/api/layout-stocks/intersection/all-3?days=90&min_score=30&top_n=200',
+        'investor2': '/api/layout-stocks/intersection/any-2?days=90&min_score=30&top_n=200'
+    };
+
+    try {
+        // Fetch All
+        const promises = selectedStrategies.map(key => fetch(apiMap[key]).then(res => res.json()));
+        const results = await Promise.all(promises);
+
+        // Normalize Data
+        // Convert all lists to a map: Code -> Data
+        // To intersect, we need to track counts
+
+        const codeCounts = {};
+        const stockDataMap = {}; // Keep the "best" version of data (prefer MA for price info)
+
+        results.forEach((list, index) => {
+            if (list.error) return; // Skip errors
+
+            // Handle different list formats
+            // Layout API returns list directly or sometimes inside object? Should be list.
+            const items = Array.isArray(list) ? list : [];
+
+            items.forEach(stock => {
+                // Normalize Code
+                const code = stock.code || stock.stock_code;
+                if (!code) return;
+
+                // Increment count
+                codeCounts[code] = (codeCounts[code] || 0) + 1;
+
+                // Store data if not exists or if current source is 'ma' (richer data)
+                // Actually, just keep the first one encountered, or merge.
+                // For simplicity, keep first.
+                if (!stockDataMap[code]) {
+                    stockDataMap[code] = normalizeStockData(stock);
+                }
+            });
+        });
+
+        // Find Intersection
+        // A stock must be present in ALL selected result sets to be kept.
+        const requiredCount = selectedStrategies.length;
+        const finalStocks = [];
+
+        Object.keys(codeCounts).forEach(code => {
+            if (codeCounts[code] === requiredCount) {
+                finalStocks.push(stockDataMap[code]);
+            }
+        });
+
+        // Render
+        renderStocks(finalStocks);
+
+        if (finalStocks.length === 0) {
+            stockListEl.innerHTML = '<div style="grid-column: 1/-1; text-align: center;">無符合「所有條件」的股票。試著減少勾選的條件？</div>';
+        }
+
+    } catch (error) {
+        console.error('Analysis error:', error);
+        loadingMsg.textContent = '分析失敗，請重試。';
+    }
+}
+
+function normalizeStockData(source) {
+    // Convert various API formats to standard format for renderStocks
+    return {
+        code: source.code || source.stock_code,
+        name: source.name || source.stock_name,
+        category: source.category || '其他',
+        price: source.price || 0, // Some APIs might not have price (e.g. layout only has net) -> Layout API usually lacks real-time price! 
+        // Note: Layout API DOES NOT return realtime price. It returns historical pattern.
+        // If we pick "Investor" only, we might show 0 price. This is a known limitation for now.
+        // We could fetch price separately but that's expensive for lists.
+        // For now, assume 0 or handle in UI.
+
+        change: source.change || 0,
+        change_percent: source.change_percent || 0, // Standardize? source.change_percent might be missing
+
+        // MA specific
+        ma20: source.ma20,
+        diff_percent: source.diff_percent,
+
+        // Breakout specific
+        reason: source.reason,
+
+        // Layout specific
+        total_net: source.total_net,
+
+        // Sparkline
+        sparkline: source.sparkline || []
+    };
+}
+
+function renderStockDetailLine(stock) {
+    // Logic to decide what to show in the detail line based on available data
+    if (stock.ma20 !== undefined && stock.diff_percent !== undefined) {
+        return `MA20: ${stock.ma20} (${stock.diff_percent}%)`;
+    }
+    if (stock.reason) {
+        return `訊號: ${stock.reason}`;
+    }
+    if (stock.total_net !== undefined) {
+        const netSign = stock.total_net >= 0 ? '+' : '';
+        return `累積買超: ${netSign}${(stock.total_net / 1000).toFixed(1)}千股`;
+    }
+    if (stock.price === 0) {
+        return `<span style="color:#8b949e">即時資料需點擊查看</span>`;
+    }
+    return '';
 }
