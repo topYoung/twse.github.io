@@ -211,6 +211,31 @@ def is_volume_shrinking(hist, days=3, ma_vol_days=5):
     
     return (is_shrinking or is_low_vol), f"VolRatio: {round(current_vol/avg_vol, 2)}"
 
+def get_rebound_stocks():
+    """
+    Scans for stocks that:
+    1. Are at a low base (Price is < 20% above 60-day Low)
+    2. Have low volatility (Consolidation)
+    3. Are turning up (Price > MA20, MA5 turning up)
+    """
+    keys_from_map = list(STOCK_SUB_CATEGORIES.keys())
+    all_stocks = list(set(TECH_STOCKS + TRAD_STOCKS + keys_from_map))
+    
+    results = []
+    
+    with ThreadPoolExecutor(max_workers=50) as executor:
+        futures = [executor.submit(check_rebound, code) for code in all_stocks]
+        for future in futures:
+            res = future.result()
+            if res:
+                results.append(res)
+    
+    # Sort by "Distance from Low" (closer to low is better for 'Low Base' validation, 
+    # but we might want 'Stronger Rebound' so maybe sort by MA diff)
+    # Let's sort by "Diff from MA20" (Strength of rebound)
+    results.sort(key=lambda x: x['ma_diff_pct'], reverse=True)
+    return results
+
 def check_rebound(stock_code):
     try:
         ticker_symbol = get_yahoo_ticker(stock_code)

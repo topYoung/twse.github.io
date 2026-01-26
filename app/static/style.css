@@ -308,7 +308,8 @@ button:hover {
 /* === 起漲點偵測 (Breakout) 卡片加強 === */
 .breakout-modal-content #breakout-list.stock-grid,
 #breakout-list.stock-grid {
-    grid-template-columns: 1fr; /* 起漲清單改單欄，避免六項資訊破框 */
+    grid-template-columns: 1fr;
+    /* 起漲清單改單欄，避免六項資訊破框 */
 }
 
 .breakout-card .card-header {
@@ -330,7 +331,8 @@ button:hover {
 }
 
 .breakout-card .stock-name {
-    font-size: 1.5em; /* 放大紅框的主標題 */
+    font-size: 1.5em;
+    /* 放大紅框的主標題 */
     line-height: 1.1;
 }
 
@@ -374,6 +376,7 @@ button:hover {
     .breakout-card .breakout-metric {
         align-items: flex-start;
     }
+
     .breakout-card .breakout-metric .metric-value {
         white-space: normal;
         max-width: 60%;
@@ -678,4 +681,263 @@ button:hover {
 
 .investor-btn .icon {
     font-size: 1.1em;
+}
+
+/* ========================================
+   RWD - Responsive Web Design
+   ======================================== */
+
+/* Tablet (768px - 1024px) */
+@media (max-width: 1024px) {
+    .container {
+        padding: 15px;
+    }
+
+    header {
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+
+    .search-bar-container {
+        order: 3;
+        max-width: 100% !important;
+        margin: 0 !important;
+        flex-basis: 100%;
+    }
+
+    .stock-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+    }
+
+    .investor-modal-content {
+        width: 90%;
+    }
+
+    .layout-stocks-modal-content {
+        width: 95%;
+    }
+}
+
+/* Mobile (< 768px) */
+@media (max-width: 768px) {
+    body {
+        font-size: 14px;
+    }
+
+    .container {
+        padding: 10px;
+    }
+
+    /* Header 區域 */
+    header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+
+    .header-left h1 {
+        font-size: 1.5em;
+    }
+
+    .index-card {
+        min-width: auto;
+        text-align: center;
+    }
+
+    .index-value {
+        font-size: 1.8em;
+    }
+
+    /* 搜尋列 */
+    .search-bar-container {
+        width: 100%;
+    }
+
+    #stock-search {
+        font-size: 16px !important;
+        /* 防止 iOS 自動縮放 */
+    }
+
+    /* Stock Grid - 單欄顯示 */
+    .stock-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .stock-card {
+        padding: 15px;
+    }
+
+    /* 按鈕群組 - 可滾動橫向列表 */
+    .investor-quick-actions {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 5px;
+        gap: 8px;
+    }
+
+    .investor-btn {
+        flex-shrink: 0;
+        min-height: 44px;
+        /* iOS 建議最小觸控區域 */
+        padding: 8px 14px;
+        white-space: nowrap;
+    }
+
+    /* 綜合篩選工具列 */
+    .analysis-toolbar {
+        padding: 12px !important;
+    }
+
+    #analysis-options {
+        flex-direction: column;
+        gap: 10px !important;
+    }
+
+    .checkbox-label {
+        min-height: 44px;
+        padding: 8px 0;
+    }
+
+    /* Category Filter */
+    #category-filter {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        flex-wrap: nowrap;
+        padding-bottom: 5px;
+    }
+
+    .filter-btn {
+        flex-shrink: 0;
+        min-height: 44px;
+        padding: 10px 16px;
+        white-space: nowrap;
+    }
+
+    /* Modal - 全螢幕顯示 */
+    .modal-content {
+        width: 100%;
+        height: 100%;
+        max-width: 100%;
+        max-height: 100%;
+        border-radius: 0;
+        padding: 20px 15px;
+    }
+
+    .investor-modal-content,
+    .layout-stocks-modal-content {
+        width: 100%;
+    }
+
+    .modal-header h2 {
+        font-size: 1.3em;
+    }
+
+    /* Chart Section - 全螢幕 */
+    .chart-section {
+        width: 100%;
+        height: 100%;
+        border-radius: 0;
+        padding: 15px;
+    }
+
+    .chart-controls {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .chart-controls button {
+        flex: 1 1 calc(50% - 4px);
+        min-width: 0;
+        padding: 10px 12px;
+        font-size: 0.9em;
+    }
+
+    /* MA Legend */
+    .ma-legend {
+        flex-wrap: wrap;
+        gap: 10px;
+        padding: 8px;
+    }
+
+    .ma-legend-item {
+        font-size: 0.85em;
+    }
+
+    /* Investor Grid */
+    .investor-grid {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+
+    /* Layout Stats */
+    .layout-stats {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    /* Breakout Card - 已有 @media 規則，保持 */
+}
+
+/* Small Mobile (< 480px) */
+@media (max-width: 480px) {
+    .header-left h1 {
+        font-size: 1.3em;
+    }
+
+    .subtitle {
+        font-size: 0.85em;
+    }
+
+    .index-value {
+        font-size: 1.6em;
+    }
+
+    .stock-name {
+        font-size: 1.1em;
+    }
+
+    .stock-price {
+        font-size: 1.5em;
+    }
+
+    .modal-header h2 {
+        font-size: 1.2em;
+    }
+
+    .chart-controls button {
+        flex: 1 1 100%;
+        font-size: 0.85em;
+    }
+
+    /* 按鈕文字縮小避免換行 */
+    .investor-btn {
+        font-size: 0.85em;
+        padding: 8px 12px;
+    }
+
+    .filter-btn {
+        font-size: 0.85em;
+        padding: 8px 14px;
+    }
+}
+
+/* Landscape Mode on Mobile */
+@media (max-height: 500px) and (orientation: landscape) {
+    .chart-section {
+        height: 100vh;
+    }
+
+    .modal-content {
+        height: 100vh;
+        overflow-y: auto;
+    }
+
+    header {
+        margin-bottom: 15px;
+        padding-bottom: 15px;
+    }
 }
