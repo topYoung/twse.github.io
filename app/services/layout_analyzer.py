@@ -152,7 +152,11 @@ def get_layout_stocks(investor_type: str, days: int = 90, min_score: float = 30.
         score = calculate_layout_score(pattern)
         
         # 只保留評分達標的股票
-        if score >= min_score:
+        # Strict Accumulation Check:
+        # 1. Score >= min_score
+        # 2. Total Net Buy > 0 (Must be positive accumulation)
+        # 3. Buy Days > Sell Days (Consistent buying behavior)
+        if score >= min_score and pattern['total_net'] > 0 and pattern['buy_days'] > pattern['sell_days']:
             pattern['layout_score'] = score
             
             # Add Category
