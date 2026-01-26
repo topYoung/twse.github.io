@@ -4,6 +4,7 @@ from fastapi.responses import FileResponse
 from app.services.stock_data import get_market_index, get_filtered_stocks, get_stock_history, search_stock_code
 from app.services.layout_analyzer import get_all_investors_summary, get_layout_stocks, get_multi_investor_layout
 from app.services.breakout_scanner import get_breakout_stocks, get_rebound_stocks, get_downtrend_stocks
+from app.services.dividend_scanner import get_high_dividend_stocks
 
 app = FastAPI()
 # Force server reload for stock_data updates
@@ -97,3 +98,10 @@ async def api_layout_intersection(mode: str, days: int = 90, min_score: float = 
         return {"error": "Invalid mode. Use 'all-3' or 'any-2'"}
         
     return get_multi_investor_layout(mode, days, min_score, top_n)
+
+@app.get("/api/high-dividend-stocks")
+async def api_high_dividend_stocks(min_yield: float = 3.0, top_n: int = 50):
+    """
+    Get high dividend yield stocks.
+    """
+    return get_high_dividend_stocks(min_yield, top_n)

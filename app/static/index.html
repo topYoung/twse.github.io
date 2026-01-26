@@ -84,6 +84,11 @@
                             style="border: 1px solid #a371f7; color: #a371f7;">
                             <span class="icon">🤝</span> 2法人同買
                         </button>
+                        <!-- High Dividend Button -->
+                        <button class="investor-btn" onclick="openHighDividendModal()"
+                            style="border: 1px solid #f85149; color: #f85149;">
+                            <span class="icon">💰</span> 高股息
+                        </button>
                     </div>
                 </div>
     </div>
@@ -122,6 +127,9 @@
             </label>
             <label class="checkbox-label">
                 <input type="checkbox" name="strategy" value="investor2"> 2法人同買
+            </label>
+            <label class="checkbox-label">
+                <input type="checkbox" name="strategy" value="dividend"> 高股息
             </label>
         </div>
     </div>
@@ -252,6 +260,20 @@
             </div>
             <div id="multi-investor-loading" class="loading-spinner hidden">正在分析交集資料，請稍候...</div>
             <div id="multi-investor-list" class="stock-grid">
+                <!-- 列表將在這裡產生 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 高股息 Modal -->
+    <div id="high-dividend-modal" class="modal hidden">
+        <div class="modal-content investor-modal-content" style="max-width: 1000px;">
+            <div class="modal-header">
+                <h2>💰 高股息股票</h2>
+                <button class="close-modal-btn" onclick="closeHighDividendModal()">✕</button>
+            </div>
+            <div id="high-dividend-loading" class="loading-spinner hidden">正在掃描高股息股票...</div>
+            <div id="high-dividend-list" class="stock-grid">
                 <!-- 列表將在這裡產生 -->
             </div>
         </div>

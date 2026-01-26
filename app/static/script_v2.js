@@ -56,6 +56,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (event.target === multiInvestorModal) {
             closeMultiInvestorModal();
         }
+
+        const highDividendModal = document.getElementById('high-dividend-modal');
+        if (event.target === highDividendModal) {
+            closeHighDividendModal();
+        }
     });
 
     // Check for specific buttons if they exist (legacy support)
@@ -1183,7 +1188,8 @@ async function runComprehensiveAnalysis() {
         'rebound': '/api/rebound-stocks',
         'downtrend': '/api/downtrend-stocks',
         'investor3': '/api/layout-stocks/intersection/all-3?days=90&min_score=30&top_n=200',
-        'investor2': '/api/layout-stocks/intersection/any-2?days=90&min_score=30&top_n=200'
+        'investor2': '/api/layout-stocks/intersection/any-2?days=90&min_score=30&top_n=200',
+        'dividend': '/api/high-dividend-stocks?min_yield=3.0&top_n=200'
     };
 
     try {
@@ -1292,4 +1298,105 @@ function renderStockDetailLine(stock) {
         return `<span style="color:#8b949e">即時資料需點擊查看</span>`;
     }
     return '';
+}
+
+
+// --- 高股息功能 (High Dividend) ---
+
+async function openHighDividendModal() {
+    const modal = document.getElementById('high-dividend-modal');
+    const loading = document.getElementById('high-dividend-loading');
+    const container = document.getElementById('high-dividend-list');
+
+    modal.classList.remove('hidden');
+    loading.classList.remove('hidden');
+    container.innerHTML = '';
+
+    try {
+        const response = await fetch('/api/high-dividend-stocks?min_yield=3.0&top_n=50');
+        const stocks = await response.json();
+
+        loading.classList.add('hidden');
+
+        if (stocks.error) {
+            container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #f85149;">${stocks.error}</div>`;
+            return;
+        }
+
+        if (!stocks || stocks.length === 0) {
+            container.innerHTML = '<div style="grid-column: 1/-1; text-align: center;">目前無符合條件的高股息股票</div>';
+            return;
+        }
+
+        stocks.forEach(stock => {
+            const card = createHighDividendCard(stock);
+            container.appendChild(card);
+        });
+
+    } catch (error) {
+        console.error('Error fetching high dividend stocks:', error);
+        loading.classList.add('hidden');
+        container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #f85149;">掃描失敗，請稍後重試</div>';
+    }
+}
+
+function closeHighDividendModal() {
+    const modal = document.getElementById('high-dividend-modal');
+    modal.classList.add('hidden');
+}
+
+function createHighDividendCard(stock) {
+    const card = document.createElement('div');
+    card.className = 'stock-card';
+    card.style.borderLeft = '4px solid #f85149';
+
+    card.onclick = () => {
+        openChart(stock.code, stock.name, '高股息');
+    };
+
+    const priceClass = stock.change_percent >= 0 ? 'up' : 'down';
+    const priceSign = stock.change_percent >= 0 ? '+' : '';
+
+    card.innerHTML = `
+        <div class="card-header">
+            <div class="stock-identity">
+                <span class="stock-name">${stock.name}</span>
+                <span class="stock-code-small">${stock.code}</span>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                 <span class="badge ${stock.category === '其他' ? 'trad' : 'tech'}">${stock.category}</span>
+                 <span class="layout-score score-high">殖利率 ${stock.dividend_yield}%</span>
+            </div>
+        </div>
+        
+        <div class="card-body">
+            <div class="price-info">
+                <div class="stock-price">${stock.price}</div>
+                <div class="stock-change ${priceClass}">
+                     ${priceSign}${stock.change_percent}%
+                </div>
+            </div>
+        </div>
+
+        <div class="layout-stats" style="margin-top: 12px;">
+            <div class="layout-stat-item">
+                <span class="stat-label">現金股利</span>
+                <span class="stat-value">${stock.cash_dividend} 元</span>
+            </div>
+            <div class="layout-stat-item">
+                <span class="stat-label">股票股利</span>
+                <span class="stat-value">${stock.stock_dividend} 元</span>
+            </div>
+            <div class="layout-stat-item">
+                <span class="stat-label">總股利</span>
+                <span class="stat-value">${stock.total_dividend} 元</span>
+            </div>
+            <div class="layout-stat-item">
+                <span class="stat-label">除息日</span>
+                <span class="stat-value">${stock.ex_dividend_date || 'N/A'}</span>
+            </div>
+        </div>
+    `;
+
+    return card;
 }
