@@ -1,126 +1,78 @@
 """
 高股息股票掃描模組
-分析股票的股利發放情況，篩選高殖利率標的
-使用台灣證交所公開資料
+使用本地 JSON 資料檔（從 WantGoo 抓取）
 """
 
 import yfinance as yf
-import pandas as pd
-import requests
-from datetime import datetime, timedelta
+import json
+import os
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from .categories import TECH_STOCKS, TRAD_STOCKS, STOCK_SUB_CATEGORIES
 from .stock_data import get_yahoo_ticker
 import twstock
 
 
-# 台灣證交所股利資料 API
-TWSE_DIVIDEND_URL = "https://www.twse.com.tw/rwd/zh/afterTrading/t187ap03_L"
+# 股利資料檔案路徑
+DIVIDEND_DATA_FILE = os.path.join(os.path.dirname(__file__), '../data/dividend_data.json')
+
+
+def load_dividend_database():
+    """載入股利資料庫"""
+    try:
+        if os.path.exists(DIVIDEND_DATA_FILE):
+            with open(DIVIDEND_DATA_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                # 建立快速查詢的字典
+                return {stock['code']: stock for stock in data['stocks']}
+        else:
+            print(f"Warning: Dividend data file not found: {DIVIDEND_DATA_FILE}")
+            return {}
+    except Exception as e:
+        print(f"Error loading dividend data: {e}")
+        return {}
+
+
+# 載入股利資料庫（全域變數，只載入一次）
+DIVIDEND_DB = load_dividend_database()
 
 
 def get_dividend_info(stock_code):
     """
     取得單一股票的股利資訊
-    使用台灣證交所資料
+    從本地資料庫查詢
     
     Returns:
         {
-            'cash_dividend': float,  # 現金股利
-            'stock_dividend': float,  # 股票股利
-            'total_dividend': float,  # 總股利
-            'dividend_yield': float,  # 殖利率 (%)
-            'ex_dividend_date': str   # 最近除息日
+            'cash_dividend': float,
+            'dividend_yield': float,
+            'ex_dividend_date': str
         }
     """
     try:
-        # 取得當前價格
-        ticker_symbol = get_yahoo_ticker(stock_code)
-        ticker = yf.Ticker(ticker_symbol)
-        hist = ticker.history(period="5d")
+        # 從資料庫查詢
+        if stock_code in DIVIDEND_DB:
+            div_data = DIVIDEND_DB[stock_code]
+            return {
+                'cash_dividend': div_data['cash_dividend'],
+                'dividend_yield': div_data['dividend_yield'],
+                'ex_dividend_date': div_data.get('ex_dividend_date')
+            }
         
-        if hist.empty:
-            return None
-            
-        current_price = hist['Close'].iloc[-1]
-        
-        # 從證交所取得股利資料
-        # 使用最近年度資料
-        current_year = datetime.now().year
-        
-        # 嘗試取得最近兩年的股利資料
-        cash_div = 0
-        stock_div = 0
-        ex_date = None
-        
-        for year in [current_year, current_year - 1]:
-            try:
-                params = {
-                    'response': 'json',
-                    'date': f'{year}0101'  # 使用年初日期查詢該年度資料
-                }
-                
-                response = requests.get(TWSE_DIVIDEND_URL, params=params, timeout=10)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    
-                    if 'data' in data and data['data']:
-                        # 尋找該股票代號的資料
-                        for row in data['data']:
-                            if row[0] == stock_code:  # 股票代號在第一欄
-                                # 資料格式: [代號, 名稱, 除息日, 現金股利, 股票股利, ...]
-                                try:
-                                    cash_div = float(row[3]) if row[3] and row[3] != '-' else 0
-                                    stock_div = float(row[4]) if row[4] and row[4] != '-' else 0
-                                    ex_date = row[2] if row[2] and row[2] != '-' else None
-                                    break
-                                except (ValueError, IndexError):
-                                    continue
-                
-                if cash_div > 0 or stock_div > 0:
-                    break  # 找到資料就停止
-                    
-            except Exception:
-                continue
-        
-        # 如果證交所沒資料，嘗試用 twstock 的資料
-        if cash_div == 0 and stock_div == 0:
-            try:
-                if stock_code in twstock.codes:
-                    # twstock 沒有直接的股利資料，這裡只是示例
-                    # 實際上可能需要其他資料源
-                    pass
-            except Exception:
-                pass
-        
-        total_dividend = cash_div + stock_div
-        
-        # 計算殖利率
-        dividend_yield = (total_dividend / current_price * 100) if current_price > 0 and total_dividend > 0 else 0
-        
+        # 如果資料庫沒有，返回空值
         return {
-            'cash_dividend': round(float(cash_div), 2),
-            'stock_dividend': round(float(stock_div), 2),
-            'total_dividend': round(float(total_dividend), 2),
-            'dividend_yield': round(float(dividend_yield), 2),
-            'ex_dividend_date': ex_date
+            'cash_dividend': 0,
+            'dividend_yield': 0,
+            'ex_dividend_date': None
         }
         
     except Exception as e:
-        # print(f"Error getting dividend for {stock_code}: {e}")
         return None
 
 
 def get_high_dividend_stocks(min_yield=3.0, top_n=50):
     """
     掃描並篩選高股息股票
-    
-    Args:
-        min_yield: 最低殖利率門檻 (%)
-        top_n: 回傳前 N 檔股票
-    
-    Returns:
-        股票清單，依殖利率排序
     """
     keys_from_map = list(STOCK_SUB_CATEGORIES.keys())
     all_stocks = list(set(TECH_STOCKS + TRAD_STOCKS + keys_from_map))
@@ -144,11 +96,16 @@ def check_dividend(stock_code, min_yield=3.0):
     檢查單一股票是否符合高股息條件
     """
     try:
-        ticker_symbol = get_yahoo_ticker(stock_code)
-        ticker = yf.Ticker(ticker_symbol)
+        # 取得股利資訊
+        div_info = get_dividend_info(stock_code)
+        if not div_info or div_info['dividend_yield'] < min_yield:
+            return None
         
         # 取得當前價格
+        ticker_symbol = get_yahoo_ticker(stock_code)
+        ticker = yf.Ticker(ticker_symbol)
         hist = ticker.history(period="1mo")
+        
         if len(hist) < 5:
             return None
             
@@ -156,11 +113,6 @@ def check_dividend(stock_code, min_yield=3.0):
         current_price = today['Close']
         prev_close = hist.iloc[-2]['Close']
         change_percent = ((current_price - prev_close) / prev_close) * 100
-        
-        # 取得股利資訊
-        div_info = get_dividend_info(stock_code)
-        if not div_info or div_info['dividend_yield'] < min_yield:
-            return None
         
         # 取得股票名稱和分類
         name = stock_code
@@ -180,12 +132,11 @@ def check_dividend(stock_code, min_yield=3.0):
             'price': round(float(current_price), 2),
             'change_percent': round(float(change_percent), 2),
             'cash_dividend': div_info['cash_dividend'],
-            'stock_dividend': div_info['stock_dividend'],
-            'total_dividend': div_info['total_dividend'],
+            'stock_dividend': 0,  # WantGoo 資料沒有區分股票股利
+            'total_dividend': div_info['cash_dividend'],
             'dividend_yield': div_info['dividend_yield'],
             'ex_dividend_date': div_info['ex_dividend_date']
         }
         
     except Exception:
         return None
-
