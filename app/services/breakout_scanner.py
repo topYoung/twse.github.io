@@ -190,30 +190,26 @@ def check_breakout(stock_code):
         # print(f"Error checking breakout {stock_code}: {e}")
         return None
 
-def get_rebound_stocks():
+def is_volume_shrinking(hist, days=3, ma_vol_days=5):
     """
-    Scans for stocks that:
-    1. Are at a low base (Price is < 20% above 60-day Low)
-    2. Have low volatility (Consolidation)
-    3. Are turning up (Price > MA20, MA5 turning up)
+    Check if volume is shrinking or low relative to average.
+    Returns (True/False, reason)
     """
-    keys_from_map = list(STOCK_SUB_CATEGORIES.keys())
-    all_stocks = list(set(TECH_STOCKS + TRAD_STOCKS + keys_from_map))
+    if len(hist) < days + ma_vol_days:
+        return False, "Not enough data"
+        
+    recent = hist.tail(days)
+    prev = hist.iloc[-(days + ma_vol_days):-days]
     
-    results = []
+    current_vol = recent['Volume'].mean()
+    avg_vol = prev['Volume'].mean()
     
-    with ThreadPoolExecutor(max_workers=50) as executor:
-        futures = [executor.submit(check_rebound, code) for code in all_stocks]
-        for future in futures:
-            res = future.result()
-            if res:
-                results.append(res)
+    # 1. Volume shrinking order (last > current)
+    # 2. OR Current volume < Average Volume * 0.8
+    is_shrinking = hist['Volume'].iloc[-1] < hist['Volume'].iloc[-2]
+    is_low_vol = current_vol < avg_vol * 0.8
     
-    # Sort by "Distance from Low" (closer to low is better for 'Low Base' validation, 
-    # but we might want 'Stronger Rebound' so maybe sort by MA diff)
-    # Let's sort by "Diff from MA20" (Strength of rebound)
-    results.sort(key=lambda x: x['ma_diff_pct'], reverse=True)
-    return results
+    return (is_shrinking or is_low_vol), f"VolRatio: {round(current_vol/avg_vol, 2)}"
 
 def check_rebound(stock_code):
     try:
@@ -229,44 +225,53 @@ def check_rebound(stock_code):
         today = hist.iloc[-1]
         current_price = today['Close']
         
-        # 1. Check Low Base
-        # Find 60-day Low
+        # --- NEW LOGIC: Wash Trading (Pullback to MA + Shrinking Volume) ---
+        # 1. Identify Uptrend Baseline: Price > MA60
         last_60 = hist.iloc[-60:]
+        ma60 = last_60['Close'].rolling(window=60).mean().iloc[-1]
+        
+        # If below MA60, maybe use original "Low Base" logic?
+        # Let's combine strategies.
+        
+        ma20 = last_60['Close'].rolling(window=20).mean().iloc[-1]
+        ma10 = last_60['Close'].rolling(window=10).mean().iloc[-1]
+        
+        reason = ""
+        is_rebound = False
+        
         low_60 = last_60['Close'].min()
         high_60 = last_60['Close'].max()
+        position_pct = (current_price - low_60) / (high_60 - low_60) if high_60 > low_60 else 0.5
+        ma_diff_pct = (current_price - ma20) / ma20
+
+        # Strategy A: Wash Trading (Strong Trend Pullback)
+        # - Price > MA60 (Long term up)
+        # - Pullback: Recent 3 days have at least 1-2 down days, or price dropped from local high
+        # - Support: Close to MA10 or MA20 (within 2-3%)
+        # - Volume: Shrinking
         
-        # Position in range (0 = Low, 1 = High)
-        position = (current_price - low_60) / (high_60 - low_60) if high_60 > low_60 else 0.5
+        is_uptrend = current_price > ma60
+        near_support = abs(current_price - ma20)/ma20 < 0.04 or abs(current_price - ma10)/ma10 < 0.04
         
-        # Must be in lower 30% of recent range to be considered "Low Base"
-        if position > 0.3:
-            return None
+        vol_shrinking, vol_msg = is_volume_shrinking(hist, days=3)
+        
+        # Check Pullback (High of last 10 days > Current Price * 1.02)
+        local_high = hist['Close'].iloc[-10:].max()
+        is_pullback = local_high > current_price * 1.02
+        
+        if is_uptrend and near_support and vol_shrinking and is_pullback:
+            is_rebound = True
+            reason = "主力洗盤(量縮回檔守均線)"
             
-        # 2. Check Trend Reversal
-        ma20 = last_60['Close'].rolling(window=20).mean().iloc[-1]
-        ma5 = last_60['Close'].rolling(window=5).mean().iloc[-1]
-        
-        # Must be above MA20 (Support regained)
-        if current_price < ma20:
-             return None
-             
-        # MA5 should be > MA20 (Golden Cross or close to it) OR Price > MA20 by small margin
-        # Let's say we want Price to be just crossing or slightly above
-        ma_diff = (current_price - ma20) / ma20
-        
-        # Filter: Price shouldn't be TOO high above MA20 (don't chase high)
-        if ma_diff > 0.08: # > 8% above MA20 might be too late
-             return None
-             
-        # 3. Check Volatility (Consolidation)
-        # Standard Deviation of last 20 days < Threshold?
-        # Or simple box range of last 10 days
-        last_10 = hist.iloc[-11:-1] # Exclude today
-        if not last_10.empty:
-             range_10 = (last_10['Close'].max() - last_10['Close'].min()) / last_10['Close'].min()
-             # If moved > 15% in last 10 days, too volatile, skipping
-             if range_10 > 0.15:
-                 return None
+        # Strategy B: Original Low Base Rebound
+        # - Low position (< 30%)
+        # - Regain MA20
+        elif position_pct < 0.3 and current_price > ma20 and ma_diff_pct < 0.05:
+            is_rebound = True
+            reason = "低檔轉強(站回月線)"
+            
+        if not is_rebound:
+            return None
                  
         import twstock
         name = stock_code
@@ -278,16 +283,20 @@ def check_rebound(stock_code):
             name = info.name
             if category == '其他' and info.group:
                 category = info.group.replace('業', '')
-
+        
+        # If reason is Wash Trading, give it a high "Low Base" score to prioritize (or sort by ma_diff)
+        # We preserve original fields
+        
         return {
             "code": stock_code,
             "name": name,
             "price": round(current_price, 2),
             "low_60": round(low_60, 2),
-            "position_pct": round(position * 100, 1),
+            "position_pct": round(position_pct * 100, 1),
             "ma20": round(ma20, 2),
-            "ma_diff_pct": round(ma_diff * 100, 1),
-            "category": category
+            "ma_diff_pct": round(ma_diff_pct * 100, 1),
+            "category": category,
+            "reason": reason # Add reason field to API response? Original script.js might not show it in rebound card, but good to have
         }
     except Exception:
         return None
@@ -295,9 +304,8 @@ def check_rebound(stock_code):
 def get_downtrend_stocks():
     """
     Scans for stocks that:
-    1. Are at a relatively high level (Price > MA20)
-    2. Showing signs of weakness after strength (Consecutive rises OR High RSI)
-    3. Reversal signal (K < D)
+    1. Are at a relatively high level
+    2. Showing signs of weakness (Distribution or Reversal indicator)
     """
     keys_from_map = list(STOCK_SUB_CATEGORIES.keys())
     all_stocks = list(set(TECH_STOCKS + TRAD_STOCKS + keys_from_map))
@@ -311,8 +319,8 @@ def get_downtrend_stocks():
             if res:
                 results.append(res)
     
-    # Sort by RSI desc (High RSI means more overbought)
-    results.sort(key=lambda x: x['rsi'] if x['rsi'] is not None else 0, reverse=True)
+    # Sort: Prioritize "Distribution" (High Vol Stagnation) or High RSI
+    results.sort(key=lambda x: (x.get('is_distribution', False), x['rsi'] if x['rsi'] is not None else 0), reverse=True)
     return results
 
 def check_downtrend(stock_code):
@@ -320,7 +328,6 @@ def check_downtrend(stock_code):
         ticker_symbol = get_yahoo_ticker(stock_code)
         ticker = yf.Ticker(ticker_symbol)
         
-        # Need history for indicators
         hist = ticker.history(period="3mo")
         
         if len(hist) < 60:
@@ -329,43 +336,42 @@ def check_downtrend(stock_code):
         today = hist.iloc[-1]
         current_price = today['Close']
         
-        # 0. Basic Trend Check: Must be above MA20 (High Level context)
-        # If it's already below MA20, it's not a "high level" reversal, it's already weak.
         ma20 = hist['Close'].rolling(window=20).mean().iloc[-1]
         if current_price < ma20:
-             return None
+             return None # Trend already broken, looking for top reversal
              
-        # 1. Indicator Check: K < D (Bearish)
         k, d = compute_kd(hist)
-        if k is None or d is None:
-            return None
-            
-        # Condition: K < D
-        if not (k < d):
-            return None
-            
-        # Refinement: K should be somewhat high (> 50) to filter out bottom fishing noise
-        if k < 50:
-            return None
-            
-        # 2. Recent Strength Check (Why "Reversal"?)
-        # A: RSI > 60 (Recently strong)
-        # B: Consistent rises in recent days (e.g. 3 of last 5 days were Up)
-        
         rsi = compute_rsi(hist["Close"])
-        rsi_ok = (rsi is not None and rsi > 60)
+        today_vol = int(today["Volume"]) if not pd.isna(today["Volume"]) else 0
+        avg_vol = hist['Volume'].iloc[-21:-1].mean()
         
-        # Check consecutive rises in last 5 days (excluding today)
-        recent_5 = hist.iloc[-6:-1]
-        rise_count = 0
-        if not recent_5.empty:
-            changes = recent_5['Close'].pct_change().dropna()
-            rise_count = len([c for c in changes if c > 0])
+        reason = ""
+        is_downtrend = False
+        is_distribution = False
+        
+        # Strategy A: Distribution (High Volume Stagnation)
+        # - Price High (near 20 day high)
+        # - Volume High (> 1.5x Avg)
+        # - Price Move Small (< 1% or Doji)
+        high_20 = hist['Close'].iloc[-20:].max()
+        near_high = current_price > high_20 * 0.95
+        high_vol = today_vol > avg_vol * 1.5
+        small_move = abs(today['Close'] - today['Open']) / today['Open'] < 0.01
+        
+        if near_high and high_vol and small_move:
+            is_downtrend = True
+            is_distribution = True
+            reason = "高檔爆量滯漲(出貨訊號)"
             
-        consecutive_ok = (rise_count >= 3)
+        # Strategy B: Technical Weakness (K<D + Weakness)
+        # - K < D
+        # - RSI > 60 (Overbought context) OR Divergence (Hard to check)
+        elif k is not None and d is not None and k < d and k < 80: # K crossed down
+             if rsi and rsi > 60:
+                 is_downtrend = True
+                 reason = "指標高檔背離/轉弱"
         
-        # Must satisfy at least one "Strength" condition + K<D
-        if not (rsi_ok or consecutive_ok):
+        if not is_downtrend:
             return None
             
         # 3. Gather Other Indicators for Display
@@ -373,7 +379,6 @@ def check_downtrend(stock_code):
         bias20 = compute_bias(hist["Close"], ma_period=20)
         bb_upper, bb_mid, bb_lower, bb_width = compute_bollinger(hist["Close"], period=20, std_mult=2.0)
         
-        today_vol = int(today["Volume"]) if not pd.isna(today["Volume"]) else 0
         
         # Get Name
         import twstock
@@ -394,8 +399,8 @@ def check_downtrend(stock_code):
             "price": round(float(current_price), 2),
             "change_percent": round(float((today['Close'] - hist.iloc[-2]['Close'])/hist.iloc[-2]['Close']*100), 2),
             "volume": today_vol,
-            "kd_k": round(k, 1),
-            "kd_d": round(d, 1),
+            "kd_k": round(k, 1) if k else None,
+            "kd_d": round(d, 1) if d else None,
             "rsi": round(rsi, 1) if rsi else None,
             "macd_dif": round(macd_dif, 3) if macd_dif else None,
             "macd_signal": round(macd_signal, 3) if macd_signal else None,
@@ -403,7 +408,9 @@ def check_downtrend(stock_code):
             "bias20": round(bias20, 2) if bias20 else None,
             "bb_upper": round(bb_upper, 2) if bb_upper else None,
             "bb_lower": round(bb_lower, 2) if bb_lower else None,
-            "bb_width": round(bb_width * 100, 2) if bb_width else None
+            "bb_width": round(bb_width * 100, 2) if bb_width else None,
+            "reason": reason, # New field
+            "is_distribution": is_distribution
         }
 
     except Exception:
