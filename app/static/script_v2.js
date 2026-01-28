@@ -19,6 +19,7 @@ let ma10Series = null;
 let ma20Series = null;
 let ma60Series = null;
 let chartIntervalId = null;
+let breakoutRefreshId = null;
 
 // Initialization
 document.addEventListener('DOMContentLoaded', () => {
@@ -758,12 +759,23 @@ async function openBreakoutModal() {
 
     try {
         const response = await fetch('/api/breakout-stocks');
-        const stocks = await response.json();
+        const data = await response.json();
+        const stocks = data.stocks || (Array.isArray(data) ? data : []);
 
         loading.classList.add('hidden');
 
+        if (data.is_pre_market) {
+            const hint = document.createElement('div');
+            hint.style = 'grid-column: 1/-1; background: rgba(56, 139, 253, 0.1); border: 1px solid rgba(56, 139, 253, 0.4); border-radius: 6px; padding: 12px; margin-bottom: 20px; font-size: 0.9em; color: #79c0ff; line-height: 1.5;';
+            hint.innerHTML = '<strong>ℹ️ 盤前提醒</strong><br/>目前為盤前時段，系統顯示的是「昨日籌碼」與「技術面盤整」數據。<br/>09:00 開盤後，將會自動結合「即時買賣力道」進行更精確的過濾。';
+            container.appendChild(hint);
+        }
+
         if (!stocks || stocks.length === 0) {
-            container.innerHTML = '<div style="grid-column: 1/-1; text-align: center;">今日無明顯起漲訊號 (或無資料)</div>';
+            const emptyMsg = document.createElement('div');
+            emptyMsg.style = 'grid-column: 1/-1; text-align: center; padding: 40px; color: #8b949e;';
+            emptyMsg.innerText = '今日暫無明顯突破訊號';
+            container.appendChild(emptyMsg);
             return;
         }
 
@@ -775,13 +787,59 @@ async function openBreakoutModal() {
     } catch (error) {
         console.error('Error fetching breakouts:', error);
         loading.classList.add('hidden');
-        container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #f85149;">掃描失敗，請稍後重試</div>';
+        let errorMsg = '掃描失敗，請稍後重試';
+        if (error instanceof SyntaxError) {
+            errorMsg += ' (資料格式錯誤)';
+        }
+        container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #f85149;">${errorMsg}</div>`;
+    }
+
+    // Set auto-refresh
+    if (!breakoutRefreshId) {
+        breakoutRefreshId = setInterval(async () => {
+            if (modal.classList.contains('hidden')) {
+                clearInterval(breakoutRefreshId);
+                breakoutRefreshId = null;
+                return;
+            }
+            try {
+                const response = await fetch('/api/breakout-stocks');
+                const data = await response.json();
+                const stocks = data.stocks || (Array.isArray(data) ? data : []);
+
+                if (stocks && !data.error) {
+                    container.innerHTML = '';
+
+                    if (data.is_pre_market) {
+                        const hint = document.createElement('div');
+                        hint.style = 'grid-column: 1/-1; background: rgba(56, 139, 253, 0.1); border: 1px solid rgba(56, 139, 253, 0.4); border-radius: 6px; padding: 12px; margin-bottom: 20px; font-size: 0.9em; color: #79c0ff; line-height: 1.5;';
+                        hint.innerHTML = '<strong>ℹ️ 盤前提醒</strong><br/>目前為盤前時段，系統顯示的是「昨日籌碼」與「技術面盤整」數據。<br/>09:00 開盤後，將會自動結合「即時買賣力道」進行更精確的過濾。';
+                        container.appendChild(hint);
+                    }
+
+                    if (stocks.length === 0) {
+                        container.innerHTML += '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #8b949e;">今日暫無明顯突破訊號</div>';
+                    } else {
+                        stocks.forEach(stock => {
+                            const card = createBreakoutCard(stock);
+                            container.appendChild(card);
+                        });
+                    }
+                }
+            } catch (e) {
+                console.error('Polling error:', e);
+            }
+        }, 15000); // 15 seconds
     }
 }
 
 function closeBreakoutModal() {
     const modal = document.getElementById('breakout-modal');
     modal.classList.add('hidden');
+    if (breakoutRefreshId) {
+        clearInterval(breakoutRefreshId);
+        breakoutRefreshId = null;
+    }
 }
 
 function createBreakoutCard(stock) {
@@ -789,9 +847,13 @@ function createBreakoutCard(stock) {
     card.className = 'stock-card breakout-card';
     card.style.borderLeft = '4px solid #da3633'; // Highlight Red
     card.onclick = () => {
-        // closeBreakoutModal(); // keep open?
         openChart(stock.code, stock.name, '起漲訊號');
     };
+
+    if (stock.is_low_base) {
+        card.style.borderLeft = '4px solid #f1c40f'; // Yellow gold for gems
+        card.style.background = 'linear-gradient(90deg, rgba(241, 196, 15, 0.05) 0%, rgba(13, 17, 23, 1) 100%)';
+    }
 
     const changeClass = stock.change_percent >= 0 ? 'up' : 'down';
     const sign = stock.change_percent >= 0 ? '+' : '';
@@ -816,12 +878,23 @@ function createBreakoutCard(stock) {
         ? `上 ${stock.bb_upper} / 中 ${stock.bb_mid} / 下 ${stock.bb_lower} (寬 ${stock.bb_width}%)`
         : '-';
 
+    const diagnosticHtml = (stock.diagnostics || []).map(d => {
+        let color = '#388bfd'; // Default blue (momentum)
+        if (d.includes('過熱') || d.includes('高檔') || d.includes('偏高')) color = '#f85149'; // Red (risk)
+        if (d.includes('低位階')) color = '#f1c40f'; // Yellow (opportunity)
+        return `<span style="background: ${color}15; color: ${color}; border: 1px solid ${color}44; padding: 1px 6px; border-radius: 4px; font-size: 0.75em; margin-right: 4px; display: inline-block;">${d}</span>`;
+    }).join('');
+
     card.innerHTML = `
         <div class="card-header">
              <div class="stock-identity">
                 <div class="breakout-title">
                     <span class="stock-name">${stock.name}</span>
                     <span class="stock-code-small">${stock.code}</span>
+                </div>
+                <!-- 診斷標籤 -->
+                <div class="diagnostic-area" style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px;">
+                    ${diagnosticHtml}
                 </div>
                 <div class="breakout-metrics">
                     <div class="breakout-metric"><span class="metric-label">成交量</span><span class="metric-value">${fmtVol(stock.volume)}</span></div>
@@ -841,12 +914,18 @@ function createBreakoutCard(stock) {
                       ${sign}${stock.change_percent}%
                  </div>
             </div>
-            <div class="layout-stats" style="margin-top: 10px; font-size: 0.9em; color: #8b949e;">
+            <div class="layout-stats" style="margin-top: 10px; font-size: 0.9em; color: #8b949e; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                 <div class="layout-stat-item">
-                     <span>盤整振幅: ${stock.amplitude}%</span>
+                     <span>盤整振幅: ${stock.amplitude}% (${stock.box_days}日)</span>
                 </div>
                 <div class="layout-stat-item">
                      <span>量能倍增: ${stock.vol_ratio}x</span>
+                </div>
+                <div class="layout-stat-item">
+                     <span>法人買超: ${fmtVol(stock.inst_net)}</span>
+                </div>
+                <div class="layout-stat-item">
+                     <span style="color: ${stock.bid_ask_ratio >= 1.5 ? '#da3633' : '#8b949e'}">買賣比: ${stock.bid_ask_ratio}</span>
                 </div>
             </div>
         </div>

@@ -74,13 +74,27 @@ def analyze_stock_pattern(stock_code: str, historical_data: Dict[str, List[Dict]
 
 def calculate_layout_score(pattern: Dict) -> float:
     """
-    計算佈局評分（0-100分）
+    計算佈局評分（0-100分） - 舊版本，保留向後兼容
     
     評分標準：
     - 買入頻率分數（40%）：買入天數 / 總交易天數
     - 累積買超分數（30%）：總淨買超 > 0 得分，越大越高
     - 穩定性分數（20%）：買入量標準差的倒數
     - 持續性分數（10%）：總淨買超必須 > 0
+    """
+    return calculate_layout_score_v2(pattern, investor_type='foreign')  # 預設使用外資權重
+
+
+def calculate_layout_score_v2(pattern: Dict, investor_type: str) -> float:
+    """
+    依法人類型調整評分權重（高優先級改進 4.1）
+    
+    Args:
+        pattern: 買賣模式字典
+        investor_type: 'foreign', 'trust', 或 'dealer'
+    
+    Returns:
+        0-100 分的佈局評分
     """
     total_days = pattern['total_trading_days']
     buy_days = pattern['buy_days']
@@ -91,25 +105,49 @@ def calculate_layout_score(pattern: Dict) -> float:
     if total_days == 0:
         return 0
     
-    # 1. 買入頻率分數（0-40分）
-    buy_frequency = buy_days / total_days
-    frequency_score = buy_frequency * 40
+    # 依法人類型調整權重
+    # 外資：重視累積買超量 (50%) 與持續性 (20%)
+    if investor_type == 'foreign':
+        weights = {
+            'frequency': 0.20,    # 20%
+            'net_volume': 0.50,   # 50%
+            'stability': 0.10,    # 10%
+            'consistency': 0.20   # 20%
+        }
+    # 投信：重視穩定性 (40%) 與買入頻率 (40%)
+    elif investor_type == 'trust':
+        weights = {
+            'frequency': 0.40,
+            'net_volume': 0.20,
+            'stability': 0.40,
+            'consistency': 0.00
+        }
+    # 自營商：重視買入頻率 (50%) 與近期動向
+    else:  # dealer
+        weights = {
+            'frequency': 0.50,
+            'net_volume': 0.30,
+            'stability': 0.10,
+            'consistency': 0.10
+        }
     
-    # 2. 累積買超分數（0-30分）
-    # 只有淨買超才給分
+    # 1. 買入頻率分數
+    buy_frequency = buy_days / total_days
+    frequency_score = buy_frequency * 100 * weights['frequency']
+    
+    # 2. 累積買超分數
     if total_net > 0:
         # 正規化：假設買超 10 萬張為滿分
-        net_score = min(total_net / 100000, 1.0) * 30
+        net_score = min(total_net / 100000, 1.0) * 100 * weights['net_volume']
     else:
         net_score = 0
     
-    # 3. 穩定性分數（0-20分）
-    stability_score = stability * 20
+    # 3. 穩定性分數
+    stability_score = stability * 100 * weights['stability']
     
-    # 4. 持續性分數（0-10分）
-    # 檢查是否有持續買超（買入天數 > 賣出天數）
+    # 4. 持續性分數
     if buy_days > sell_days and total_net > 0:
-        consistency_score = 10
+        consistency_score = 100 * weights['consistency']
     else:
         consistency_score = 0
     
@@ -149,7 +187,8 @@ def get_layout_stocks(investor_type: str, days: int = 90, min_score: float = 30.
     results = []
     for stock_code in all_stocks:
         pattern = analyze_stock_pattern(stock_code, historical_data)
-        score = calculate_layout_score(pattern)
+        # 使用 v2 版本評分（依法人類型調整權重）
+        score = calculate_layout_score_v2(pattern, investor_type)
         
         # 只保留評分達標的股票
         # Strict Accumulation Check:
@@ -199,7 +238,8 @@ def get_stock_layout_detail(stock_code: str, investor_type: str, days: int = 90)
     historical_data = fetch_historical_data(investor_type, days)
     
     pattern = analyze_stock_pattern(stock_code, historical_data)
-    score = calculate_layout_score(pattern)
+    # 使用 v2 版本評分
+    score = calculate_layout_score_v2(pattern, investor_type)
     
     # 收集每日資料
     daily_data = []

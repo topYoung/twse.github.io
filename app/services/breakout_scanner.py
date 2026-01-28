@@ -3,32 +3,422 @@ import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 from .categories import TECH_STOCKS, TRAD_STOCKS, STOCK_SUB_CATEGORIES
 from .stock_data import get_yahoo_ticker
-from .indicators import compute_kd, compute_rsi, compute_macd, compute_bias, compute_bollinger
+from .indicators import compute_kd, compute_rsi, compute_macd, compute_bias, compute_bollinger, compute_multi_rsi, compute_macd_with_trend
+from .institutional_data import get_latest_institutional_data
+from .realtime_quotes import get_realtime_quotes
+import threading
+import time
+import math
+from datetime import datetime
 
-def get_breakout_stocks():
+# Global Cache for Breakout Results
+_breakout_cache = {
+    "data": [],
+    "last_update": 0
+}
+_cache_lock = threading.Lock()
+
+# ============================================================
+# 動態閾值計算函數（高優先級改進 1.1）
+# ============================================================
+
+def get_box_threshold(stock_code):
+    """
+    依產業特性調整盤整區間閾值
+    高波動產業使用較寬閾值，低波動產業使用較嚴格閾值
+    """
+    category = STOCK_SUB_CATEGORIES.get(stock_code, '其他')
+    
+    # 高波動產業（半導體、IC設計、航運、生技等）
+    high_volatility = ['IC設計', '記憶體', '航運', '生技', '矽光子', '能源']
+    if any(cat in category for cat in high_volatility):
+        return 0.20  # 20%
+    
+    # 低波動產業（金融、傳產、食品等）
+    low_volatility = ['銀行', '保險', '證券', '食品', '水泥', '電力']
+    if any(cat in category for cat in low_volatility):
+        return 0.10  # 10%
+    
+    # 中等波動（晶圓代工、PCB、被動元件等）
+    return 0.15  # 預設 15%
+
+
+def get_inst_buy_threshold(stock_code, avg_volume):
+    """
+    依股票流通量調整法人買超門檻（高優先級改進 1.2）
+    小型股使用較低門檻，大型股使用較高門檻
+    
+    Args:
+        stock_code: 股票代碼
+        avg_volume: 平均成交股數（非張數）
+    
+    Returns:
+        法人買超門檻（股數）
+    """
+    # 將成交股數轉換為張數（1張 = 1000股）
+    avg_volume_lots = avg_volume / 1000
+    
+    # 小型股：日均量 < 1000 張
+    if avg_volume_lots < 1000:
+        return 100000   # 100 張
+    # 中型股：1000 - 5000 張
+    elif avg_volume_lots < 5000:
+        return 300000   # 300 張
+    # 大型股：> 5000 張
+    else:
+        return 500000   # 500 張
+
+
+def analyze_volume_trend(hist, days=5):
+    """
+    分析量能趨勢（高優先級改進 1.3）
+    檢查量能是否呈現健康的遞增趨勢
+    
+    Args:
+        hist: 歷史資料 DataFrame
+        days: 分析天數
+    
+    Returns:
+        dict: {
+            'is_increasing': bool,
+            'growth_rate': float,
+            'is_healthy': bool
+        }
+    """
+    if len(hist) < days:
+        return {'is_increasing': False, 'growth_rate': 0, 'is_healthy': False}
+    
+    recent_vols = hist['Volume'].tail(days)
+    
+    # 檢查是否呈現遞增趨勢（至少 80% 的天數是遞增的）
+    increasing_count = sum(1 for i in range(len(recent_vols)-1) 
+                          if recent_vols.iloc[i] < recent_vols.iloc[i+1])
+    is_increasing = increasing_count >= (days - 1) * 0.6  # 至少 60% 遞增
+    
+    # 計算量能變化率
+    vol_growth_rate = (recent_vols.iloc[-1] / (recent_vols.iloc[0] + 1)) - 1
+    
+    # 健康放量：遞增且成長率 > 30%
+    is_healthy = is_increasing and vol_growth_rate > 0.3
+    
+    return {
+        'is_increasing': is_increasing,
+        'growth_rate': round(vol_growth_rate, 2),
+        'is_healthy': is_healthy
+    }
+
+
+def get_breakout_stocks(force_refresh=False):
     """
     Scans for stocks that:
-    1. Have been consolidating for 20 days (Box range < 15%)
-    2. Have triggered a breakout today (Change > 4% OR Price > Box High)
+    1. Have been consolidating for 15-60 days (Box range < 15%)
+    2. Have triggered a breakout today (Change > 3% OR Price > Box High)
+    3. Consider previous day's Institutional Sudden Buy
+    4. Consider real-time Bid/Ask Volume Ratio (Only during market hours)
     """
-    
-    # 1. Gather all target stocks
-    keys_from_map = list(STOCK_SUB_CATEGORIES.keys())
-    all_stocks = list(set(TECH_STOCKS + TRAD_STOCKS + keys_from_map))
-    
-    results = []
-    
-    # Use ThreadPool to scan fast
-    with ThreadPoolExecutor(max_workers=50) as executor:
-        futures = [executor.submit(check_breakout, code) for code in all_stocks]
-        for future in futures:
-            res = future.result()
-            if res:
-                results.append(res)
-    
-    # Sort by "Strength" (Today's Change %)
-    results.sort(key=lambda x: x['change_percent'], reverse=True)
-    return results
+    try:
+        global _breakout_cache
+        
+        current_time = time.time()
+        now = datetime.now()
+        # Taiwan Market: 09:00 - 13:30. We allow 09:00 - 14:00 for buffer.
+        is_market_hours = (now.hour >= 9 and now.hour < 14) and now.weekday() < 5
+        is_pre_market = now.hour < 9 and now.weekday() < 5
+
+        # Cache duration: 1 minute during market, 1 hour (3600s) outside market
+        cache_duration = 60 if is_market_hours else 3600
+        
+        with _cache_lock:
+            if not force_refresh and _breakout_cache["data"]:
+                last_ts = _breakout_cache["last_update"]
+                last_dt = datetime.fromtimestamp(last_ts)
+                
+                # Smart Refresh: Force update if we just transitioned into market hours
+                was_pre_market = last_dt.hour < 9 and last_dt.date() == now.date()
+                crossed_to_market = is_market_hours and was_pre_market
+                is_new_day = last_dt.date() != now.date()
+                
+                if not crossed_to_market and not is_new_day and (current_time - last_ts < cache_duration):
+                    res = _breakout_cache["data"]
+                    if isinstance(res, list): # Backward compatibility
+                        return {"stocks": res, "is_market_hours": is_market_hours, "is_pre_market": is_pre_market}
+                    # Update current state if reusing cache
+                    if isinstance(res, dict):
+                        res["is_market_hours"] = is_market_hours
+                        res["is_pre_market"] = is_pre_market
+                    return res
+
+        # 1. Gather all target stocks
+        keys_from_map = list(STOCK_SUB_CATEGORIES.keys())
+        all_stocks = list(set(TECH_STOCKS + TRAD_STOCKS + keys_from_map))
+        
+        # 2. Get latest institutional data (one-time fetch)
+        inst_data = get_latest_institutional_data()
+        
+        results = []
+        
+        # Use ThreadPool to scan fast
+        try:
+            with ThreadPoolExecutor(max_workers=50) as executor:
+                futures = [executor.submit(check_breakout_v2, code, inst_data) for code in all_stocks]
+                for future in futures:
+                    try:
+                        res = future.result()
+                        if res:
+                            results.append(res)
+                    except Exception as e:
+                        print(f"Worker error: {e}")
+                        continue
+        except Exception as e:
+            print(f"Scanning error: {e}")
+        
+        # 3. Apply Real-time Bid/Ask filter during market hours
+        if is_market_hours and results:
+            active_codes = [r['code'] for r in results]
+            quotes = get_realtime_quotes(active_codes)
+            
+            filtered_results = []
+            for r in results:
+                q = quotes.get(r['code'])
+                if q:
+                    r['bid_vol'] = q['bid_vol']
+                    r['ask_vol'] = q['ask_vol']
+                    r['bid_ask_ratio'] = q['bid_ask_ratio']
+                    
+                    # Rule: Only consider if Buy >= Sell (for some sensitivity)
+                    if q['bid_ask_ratio'] >= 1.0:
+                        filtered_results.append(r)
+                else:
+                    filtered_results.append(r)
+            results = filtered_results
+
+        # Sort
+        results.sort(key=lambda x: x['change_percent'], reverse=True)
+
+        
+        final_output = {
+            "stocks": results,
+            "is_market_hours": is_market_hours,
+            "is_pre_market": is_pre_market,
+            "last_update": current_time
+        }
+        
+        with _cache_lock:
+            _breakout_cache["data"] = final_output
+            _breakout_cache["last_update"] = current_time
+            
+        return final_output
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {
+            "stocks": [],
+            "error": str(e),
+            "is_market_hours": False,
+            "is_pre_market": False
+        }
+
+def check_breakout_v2(stock_code, inst_data_map):
+    """
+    Enhanced breakout check including institutional data.
+    使用動態閾值提升精確性（已整合高優先級改進 1.1, 1.2, 1.3）
+    """
+    try:
+        inst = inst_data_map.get(stock_code, {})
+        inst_net = inst.get('total', 0)
+        
+        ticker_symbol = get_yahoo_ticker(stock_code)
+        ticker = yf.Ticker(ticker_symbol)
+        
+        hist = ticker.history(period="6mo")
+        if len(hist) < 60: return None
+        
+        today = hist.iloc[-1]
+        
+        # === 動態閾值應用 ===
+        # 1. 依產業調整盤整區間閾值（改進 1.1）
+        box_threshold = get_box_threshold(stock_code)
+        
+        # 2. 依流通量調整法人買超門檻（改進 1.2）
+        avg_vol = float(hist.iloc[-30:]['Volume'].mean())  # 最近30天平均量
+        inst_threshold = get_inst_buy_threshold(stock_code, avg_vol)
+        has_sudden_buy = inst_net > inst_threshold
+        
+        # Best box window (15 to 60 days)
+        best_box = None
+        best_amplitude = 99.0
+        
+        periods = [20, 30, 40, 60]
+        for p in periods:
+            if len(hist) < p + 1: continue
+            data = hist.iloc[-(p+1):-1]
+            high = data['Close'].max()
+            low = data['Close'].min()
+            amp = (high - low) / low
+            if amp < best_amplitude:
+                best_amplitude = amp
+                best_box = (high, low, p)
+        
+        # 使用動態閾值判斷（不再是固定 0.15）
+        if not best_box or best_amplitude > box_threshold:
+            # 放寬：如果有法人大買且振幅在合理範圍內
+            relaxed_threshold = box_threshold * 1.33  # 放寬 33%
+            if not (has_sudden_buy and best_amplitude < relaxed_threshold):
+                return None
+
+        cons_high, cons_low, cons_days = best_box
+        
+        # Price Action
+        current_price = today['Close']
+        prev_close = hist.iloc[-2]['Close']
+        change_percent = ((current_price - prev_close) / prev_close) * 100
+        
+        price_break = current_price > (cons_high * 1.005)
+        strong_spike = change_percent >= 3.5
+        
+        if not (price_break or strong_spike):
+            if not (has_sudden_buy and change_percent > 1.0):
+                return None
+
+        # === 技術指標計算（加入多週期驗證）===
+        # 基本指標
+        k, d = compute_kd(hist)
+        rsi = compute_rsi(hist["Close"])
+        macd_dif, macd_signal, macd_hist = compute_macd(hist["Close"])
+        bias20 = compute_bias(hist["Close"], ma_period=20)
+        bb_upper, bb_mid, bb_lower, bb_width = compute_bollinger(hist["Close"], period=20, std_mult=2.0)
+        
+        # 多週期指標（高優先級改進 3）
+        multi_rsi = compute_multi_rsi(hist["Close"])
+        macd_trend = compute_macd_with_trend(hist["Close"], trend_periods=5)
+
+        
+        # Volume Analysis - 加入趨勢分析（改進 1.3）
+        today_vol = int(today["Volume"]) if not pd.isna(today["Volume"]) else 0
+        avg_vol_period = float(hist.iloc[-(cons_days+1):-1]["Volume"].mean())
+        vol_ratio = today_vol / (avg_vol_period + 1)
+        
+        # 量能趨勢分析
+        vol_trend = analyze_volume_trend(hist, days=5)
+
+        # Low Base Check (Added)
+        recent_60 = hist['Close'].iloc[-60:]
+        low_60 = recent_60.min()
+        high_60 = recent_60.max()
+        position_pct = (current_price - low_60) / (high_60 - low_60) if high_60 > low_60 else 0.5
+        is_low_base = position_pct < 0.30 # Under 30% of 60-day range
+        
+        # === 改進的有效性判斷 ===
+        is_valid = False
+        reason = ""
+        
+        # 策略 1: 健康放量突破（優先）
+        if vol_trend['is_healthy'] and (price_break or strong_spike):
+            is_valid = True
+            reason = "健康放量突破"
+            if has_sudden_buy:
+                reason = "法人+健康放量"
+        # 策略 2: 一般突破（量比要求較高）
+        elif (price_break or strong_spike) and vol_ratio >= 1.5:
+            is_valid = True
+            reason = "突破盤整區"
+            if has_sudden_buy:
+                reason = "法人大買+突破"
+        # 策略 3: 法人主導突破（量比要求降低）
+        elif has_sudden_buy and change_percent >= 2.0 and vol_ratio >= 1.0:
+            is_valid = True
+            reason = "法人佈局發動"
+            
+        if is_low_base and is_valid:
+            reason = "💎 低檔" + reason
+            
+        if not is_valid: return None
+        
+        # Metadata
+        import twstock
+        name = stock_code
+        if stock_code in twstock.codes:
+            name = twstock.codes[stock_code].name
+        category = STOCK_SUB_CATEGORIES.get(stock_code, '其他')
+        if category == '其他' and stock_code in twstock.codes:
+            info = twstock.codes[stock_code]
+            if info.group: category = info.group.replace('業', '')
+        
+        import math
+        def safe_round(v, d=2):
+            if v is None or not math.isfinite(float(v)): return None
+            return round(float(v), d)
+
+        # === 技術診斷（整合多週期驗證）===
+        diagnostics = []
+        
+        # 1. 過熱警示
+        if rsi and rsi > 80: 
+            diagnostics.append("⚠️ RSI過熱")
+        elif rsi and rsi > 70 and multi_rsi['alignment'] == '空頭排列':
+            diagnostics.append("⚠️ RSI頂背離")
+            
+        if bias20 and bias20 > 12: 
+            diagnostics.append("⚠️ 乖離偏高")
+        if k and k > 85: 
+            diagnostics.append("⚠️ KD高檔")
+        
+        # 2. 多頭訊號
+        if multi_rsi['alignment'] == '多頭排列':
+            diagnostics.append("✅ RSI多頭排列")
+        
+        if macd_hist and macd_hist > 0:
+            if macd_trend['trend'] == '擴張':
+                diagnostics.append("🚀 動能加速擴張")
+            else:
+                diagnostics.append("🚀 動能擴張")
+        elif macd_trend['trend'] == '收斂':
+            diagnostics.append("⚠️ 動能收斂")
+        
+        if bb_width and bb_width > 0.20:
+            diagnostics.append("📡 開口擴大")
+            
+        if is_low_base:
+            diagnostics.append("💎 低位階")
+        
+        # 3. 量能診斷
+        if vol_trend['is_healthy']:
+            diagnostics.append("📈 健康放量")
+
+
+        return {
+            "code": stock_code,
+            "name": name,
+            "category": category,
+            "price": safe_round(current_price, 2),
+            "change_percent": safe_round(change_percent, 2),
+            "reason": reason,
+            "diagnostics": diagnostics,
+            "volume": int(today_vol) if math.isfinite(today_vol) else 0,
+            "vol_ratio": safe_round(vol_ratio, 1) or 0.0,
+            "vol_trend_growth": safe_round(vol_trend['growth_rate'] * 100, 1),  # 新增
+            "inst_net": int(inst_net) if math.isfinite(inst_net) else 0,
+            "box_days": int(cons_days),
+            "amplitude": safe_round(best_amplitude * 100, 1) or 0.0,
+            "box_threshold_used": safe_round(box_threshold * 100, 1),  # 新增：顯示使用的閾值
+            "position_pct": safe_round(position_pct * 100, 1) or 0.0,
+            "kd_k": safe_round(k, 1),
+            "kd_d": safe_round(d, 1),
+            "rsi": safe_round(rsi, 1),
+            "macd_dif": safe_round(macd_dif, 3),
+            "macd_signal": safe_round(macd_signal, 3),
+            "macd_hist": safe_round(macd_hist, 3),
+            "bias20": safe_round(bias20, 2),
+            "bb_upper": safe_round(bb_upper, 2),
+            "bb_mid": safe_round(bb_mid, 2),
+            "bb_lower": safe_round(bb_lower, 2),
+            "bb_width": safe_round(bb_width * 100, 2),
+            "bid_vol": 0, "ask_vol": 0, "bid_ask_ratio": 1.0,
+            "is_low_base": bool(is_low_base)
+        }
+    except Exception as e:
+        print(f"Error checking breakout v2 {stock_code}: {e}")
+        return None
 
 def check_breakout(stock_code):
     try:
@@ -438,5 +828,6 @@ def check_downtrend(stock_code):
             "is_distribution": is_distribution
         }
 
-    except Exception:
+    except Exception as e:
+        print(f"Error checking downtrend {stock_code}: {e}")
         return None

@@ -87,6 +87,107 @@ def compute_bollinger(close: pd.Series, period: int = 20, std_mult: float = 2.0)
     return float(upper), float(mid_last), float(lower), float(width)
 
 
+# ============================================================
+# 多週期技術指標驗證（高優先級改進 3）
+# ============================================================
+
+def compute_multi_rsi(close: pd.Series) -> dict:
+    """
+    計算多週期 RSI（高優先級改進 3.1, 3.2）
+    
+    Returns:
+        dict: {
+            'rsi_6': float,
+            'rsi_14': float,
+            'rsi_20': float,
+            'alignment': str  # '多頭排列', '空頭排列', '混亂'
+        }
+    """
+    rsi_6 = compute_rsi(close, period=6)
+    rsi_14 = compute_rsi(close, period=14)
+    rsi_20 = compute_rsi(close, period=20)
+    
+    # 檢查多頭/空頭排列
+    alignment = '混亂'
+    if all([rsi_6, rsi_14, rsi_20]):
+        if rsi_6 > rsi_14 > rsi_20:
+            alignment = '多頭排列'
+        elif rsi_6 < rsi_14 < rsi_20:
+            alignment = '空頭排列'
+    
+    return {
+        'rsi_6': rsi_6,
+        'rsi_14': rsi_14,
+        'rsi_20': rsi_20,
+        'alignment': alignment
+    }
+
+
+def compute_macd_with_trend(close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9, trend_periods: int = 5) -> dict:
+    """
+    計算 MACD 並提供趨勢分析（高優先級改進 3.3, 3.4）
+    
+    Args:
+        close: 收盤價序列
+        fast: 快線週期
+        slow: 慢線週期
+        signal: 訊號線週期
+        trend_periods: 分析趨勢的週期數
+    
+    Returns:
+        dict: {
+            'dif': float,
+            'dea': float,
+            'hist': float,
+            'hist_series': list,  # 最近 N 期柱狀圖
+            'trend': str  # '擴張', '收斂', '震盪'
+        }
+    """
+    if close is None or close.empty or len(close) < slow + signal + trend_periods:
+        return {
+            'dif': None,
+            'dea': None,
+            'hist': None,
+            'hist_series': [],
+            'trend': '未知'
+        }
+    
+    ema_fast = _ema(close, fast)
+    ema_slow = _ema(close, slow)
+    dif = ema_fast - ema_slow
+    dea = _ema(dif, signal)
+    hist = dif - dea
+    
+    # 取最近 N 期柱狀圖
+    hist_recent = hist.tail(trend_periods)
+    hist_list = hist_recent.tolist()
+    
+    # 判斷趨勢
+    trend = '震盪'
+    if len(hist_recent) >= trend_periods:
+        # 檢查是否持續擴張（每期都大於前一期）
+        is_expanding = all(hist_recent.iloc[i] < hist_recent.iloc[i+1] 
+                          for i in range(len(hist_recent)-1))
+        # 檢查是否持續收斂（每期都小於前一期）
+        is_contracting = all(hist_recent.iloc[i] > hist_recent.iloc[i+1] 
+                            for i in range(len(hist_recent)-1))
+        
+        if is_expanding:
+            trend = '擴張'
+        elif is_contracting:
+            trend = '收斂'
+    
+    return {
+        'dif': float(dif.iloc[-1]) if not pd.isna(dif.iloc[-1]) else None,
+        'dea': float(dea.iloc[-1]) if not pd.isna(dea.iloc[-1]) else None,
+        'hist': float(hist.iloc[-1]) if not pd.isna(hist.iloc[-1]) else None,
+        'hist_series': [float(x) if not pd.isna(x) else None for x in hist_list],
+        'trend': trend
+    }
+
+
+
+
 
 
 

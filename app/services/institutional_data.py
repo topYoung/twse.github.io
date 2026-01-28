@@ -9,6 +9,7 @@ from typing import Dict, List, Optional
 import json
 import os
 from pathlib import Path
+from collections import defaultdict
 
 # 快取目錄
 CACHE_DIR = Path(__file__).parent.parent / "cache"
@@ -266,3 +267,45 @@ def get_investor_summary(investor_type: str, days: int = 30) -> Dict:
         'sell_days': sell_days,
         'days': days
     }
+
+def get_latest_institutional_data() -> Dict[str, Dict]:
+    """
+    獲取最近一個交易日的所有法人買賣超資料
+    Returns:
+        {
+            'stock_code': {
+                'foreign': net_shares,
+                'trust': net_shares,
+                'dealer': net_shares,
+                'total': net_shares
+            }
+        }
+    """
+    combined_data = defaultdict(lambda: {'foreign': 0, 'trust': 0, 'dealer': 0, 'total': 0})
+    
+    # 嘗試從今天往回找最近有資料的一天
+    date = datetime.now()
+    found_data = False
+    
+    for i in range(10): # 最多往回找 10 天
+        current_date = (date - timedelta(days=i)).strftime('%Y%m%d')
+        
+        day_results = {}
+        for inv in ['foreign', 'trust', 'dealer']:
+            raw = fetch_institutional_data(inv, current_date)
+            if raw:
+                day_results[inv] = parse_institutional_data(raw)
+        
+        if day_results:
+            # 只要有一個法人有資料就視為該日為最近交易日
+            for inv, stocks in day_results.items():
+                for s in stocks:
+                    code = s['stock_code']
+                    net = s['net']
+                    combined_data[code][inv] = net
+                    combined_data[code]['total'] += net
+            found_data = True
+            break
+            
+    return dict(combined_data) if found_data else {}
+
