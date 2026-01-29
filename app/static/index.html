@@ -66,6 +66,11 @@
                             style="border: 1px solid #da3633; color: #da3633;">
                             <span class="icon">🚀</span> 起漲訊號
                         </button>
+                        <!-- 主力買超 (外資左邊) -->
+                        <button class="investor-btn" onclick="openMajorInvestorsModal()"
+                            style="border: 1px solid #79c0ff; color: #79c0ff;">
+                            <span class="icon">🦈</span> 主力近3日
+                        </button>
                         <button class="investor-btn" onclick="openLayoutStocksModalV2('foreign', '外資')">
                             <span class="icon">🌍</span> 外資
                         </button>
@@ -260,6 +265,20 @@
             </div>
             <div id="multi-investor-loading" class="loading-spinner hidden">正在分析交集資料，請稍候...</div>
             <div id="multi-investor-list" class="stock-grid">
+                <!-- 列表將在這裡產生 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 主力買超 Modal -->
+    <div id="major-investors-modal" class="modal hidden">
+        <div class="modal-content investor-modal-content" style="max-width: 1000px;">
+            <div class="modal-header">
+                <h2>🦈 主力近3日買超排行 (三大法人合計)</h2>
+                <button class="close-modal-btn" onclick="closeMajorInvestorsModal()">✕</button>
+            </div>
+            <div id="major-investors-loading" class="loading-spinner hidden">正在分析三大法人籌碼，請稍候...</div>
+            <div id="major-investors-list" class="stock-grid">
                 <!-- 列表將在這裡產生 -->
             </div>
         </div>

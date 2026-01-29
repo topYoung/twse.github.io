@@ -1479,3 +1479,82 @@ function createHighDividendCard(stock) {
 
     return card;
 }
+
+// === 主力買超 (Major Investors) ===
+async function openMajorInvestorsModal() {
+    const modal = document.getElementById('major-investors-modal');
+    const loading = document.getElementById('major-investors-loading');
+    const container = document.getElementById('major-investors-list');
+
+    modal.classList.remove('hidden');
+    container.innerHTML = ''; // Clear previous
+    loading.classList.remove('hidden');
+
+    try {
+        const response = await fetch('/api/layout-stocks/major?days=3&top_n=50');
+        const stocks = await response.json();
+
+        loading.classList.add('hidden');
+
+        if (!stocks || stocks.length === 0) {
+            container.innerHTML = '<div style="grid-column: 1/-1; text-align: center;">目前無明顯主力買超訊號</div>';
+            return;
+        }
+
+        stocks.forEach(stock => {
+            const card = createMajorInvestorCard(stock);
+            container.appendChild(card);
+        });
+
+    } catch (error) {
+        console.error('Error fetching major investors:', error);
+        loading.classList.add('hidden');
+        container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #f85149;">載入失敗，請稍後重試</div>';
+    }
+}
+
+function closeMajorInvestorsModal() {
+    document.getElementById('major-investors-modal').classList.add('hidden');
+}
+
+function createMajorInvestorCard(stock) {
+    const card = document.createElement('div');
+    card.className = 'stock-card layout-stock-card';
+    card.style.borderLeft = '4px solid #79c0ff'; // Light Blue for Major
+
+    card.onclick = () => {
+        openChart(stock.stock_code, stock.stock_name, stock.category || '主力買超');
+    };
+
+    // Format total net (sheets)
+    const totalNetStr = (stock.total_net / 1000).toFixed(1) + '張';
+    
+    // Details for tooltip or small text
+    const fNet = Math.round(stock.details.foreign / 1000);
+    const tNet = Math.round(stock.details.trust / 1000);
+    const dNet = Math.round(stock.details.dealer / 1000);
+
+    card.innerHTML = `
+        <div class="card-header">
+            <div class="stock-identity">
+                <span class="stock-name">${stock.stock_name}</span>
+                <span class="stock-code-small">${stock.stock_code}</span>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                 <span class="badge" style="background: #1f6feb;">${stock.category || '其他'}</span>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="price-info">
+                 <div class="stock-price" style="font-size: 1.1em; color: #79c0ff;">${totalNetStr}</div>
+                 <div class="stock-change" style="font-size: 0.85em; color: #8b949e;">近3日合計買超</div>
+            </div>
+            <div class="layout-metrics" style="margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; font-size: 0.8em; text-align: center;">
+                <div style="color: ${fNet > 0 ? '#ff7b72' : '#8b949e'}">外 ${fNet}</div>
+                <div style="color: ${tNet > 0 ? '#ff7b72' : '#8b949e'}">投 ${tNet}</div>
+                <div style="color: ${dNet > 0 ? '#ff7b72' : '#8b949e'}">自 ${dNet}</div>
+            </div>
+        </div>
+    `;
+    return card;
+}
