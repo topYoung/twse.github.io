@@ -393,13 +393,15 @@ def get_major_investors_layout(days: int = 3, top_n: int = 50) -> List[Dict]:
         # 1. 聚合三大法人數據
         for inv in investors:
             # 獲取近 N 天資料
-            data_map = fetch_historical_data(inv, days=days * 2) # 多抓一點避免假日導致天數不足
+            # 遇到長假（如過年 9 天），需回溯更多天才能湊齊 days 個交易日 (e.g. 3*7=21 days back)
+            data_map = fetch_historical_data(inv, days=days * 7) # 擴大搜尋範圍
             
             if not data_map:
                 continue
 
             # 只取最近 "實際交易日" 的 days 天
             sorted_dates = sorted(data_map.keys(), reverse=True)[:days]
+            print(f"[DEBUG] Investor {inv}: Found dates {sorted_dates} (Requested {days} days)")
             
             for date_str in sorted_dates:
                 stocks = data_map[date_str]
@@ -449,7 +451,24 @@ def get_major_investors_layout(days: int = 3, top_n: int = 50) -> List[Dict]:
         
         # 依合計買超張數排序 (由大到小)
         results.sort(key=lambda x: x['total_net'], reverse=True)
+        print(f"[DEBUG] get_major_investors_layout returning {len(results)} items")
         
+        # DEBUG: If empty, return a dummy item to tell us why
+        if not results:
+            key_count = len(stock_stats)
+            sample_keys = list(stock_stats.keys())[:3]
+            debug_msg = f"Keys:{key_count} {sample_keys}"
+            return [{
+                'stock_code': 'DEBUG',
+                'stock_name': f'除錯: {debug_msg}',
+                'category': '系統回報',
+                'total_net': key_count,
+                'buy_days': 0,
+                'details': {'foreign': 0, 'trust': 0, 'dealer': 0},
+                'layout_score': 0,
+                'days_analyzed': days
+            }]
+
         return results[:top_n]
         
     except Exception as e:
