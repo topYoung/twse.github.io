@@ -43,6 +43,13 @@ async def api_institutional_investors(days: int = 30):
     """
     return get_all_investors_summary(days)
 
+@app.get("/api/layout-stocks/major")
+async def api_layout_major(days: int = 3, top_n: int = 50):
+    """
+    取得主力（三大法人合計）近期買超排行
+    """
+    return get_major_investors_layout(days, top_n)
+
 @app.get("/api/layout-stocks/{investor_type}")
 async def api_layout_stocks(investor_type: str, days: int = 90, min_score: float = 30.0, top_n: int = 50):
     """
@@ -59,12 +66,6 @@ async def api_layout_stocks(investor_type: str, days: int = 90, min_score: float
         return {"error": f"無效的法人類型，請使用: {', '.join(valid_types)}"}
     
     return get_layout_stocks(investor_type, days, min_score, top_n)
-@app.get("/api/layout-stocks/major")
-async def api_layout_major(days: int = 3, top_n: int = 50):
-    """
-    取得主力（三大法人合計）近期買超排行
-    """
-    return get_major_investors_layout(days, top_n)
 
 
 @app.get("/api/search")
