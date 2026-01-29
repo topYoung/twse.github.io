@@ -22,7 +22,15 @@ def fetch_mis_index_data():
         # Bypass SSL verification for this specific request if needed (often needed for TWSE MIS)
         context = ssl._create_unverified_context()
         
-        with urllib.request.urlopen(url, context=context, timeout=5) as response:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://mis.twse.com.tw/stock/fibest.jsp?stock=2330",
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "X-Requested-With": "XMLHttpRequest"
+        }
+        
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, context=context, timeout=5) as response:
             data = response.read().decode('utf-8')
             json_data = json.loads(data)
             
