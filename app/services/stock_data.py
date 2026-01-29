@@ -358,28 +358,131 @@ def get_stock_history(stock_code, interval='1d'):
             "ma60": []
         }
 
-def search_stock_code(query: str):
+from typing import List, Dict
+
+def search_stock_code(query: str, limit: int = 10) -> List[Dict]:
     """
     Search stock by code or name using twstock.
-    Returns {code, name} or None.
-    """
-    query = query.strip()
+    Supports fuzzy matching for partial name search.
+    Returns list of {code, name} or empty list.
     
-    # 1. Direct Code Match
+    Args:
+        query: Search keyword (code or name)
+        limit: Maximum number of results to return
+    """
+    query = query.strip().upper()
+    results = []
+    
+    if not query:
+        return results
+    
+    # 1. Exact Code Match (highest priority)
     if query in twstock.codes:
         info = twstock.codes[query]
-        return {"code": info.code, "name": info.name}
-        
-    # 2. Name Match (Iterate all)
-    # This is slightly heavy but twstock.codes is not huge (~2000 items)
+        results.append({"code": info.code, "name": info.name})
+        return results
+    
+    # 2. Exact Name Match
     for code, info in twstock.codes.items():
         if info.name == query:
-             return {"code": info.code, "name": info.name}
-             
-    # 3. Partial Name Match (optional, pick first)
-    # for code, info in twstock.codes.items():
-    #    if query in info.name:
-    #         return {"code": info.code, "name": info.name}
-             
-    return None
+            results.append({"code": info.code, "name": info.name})
+            if len(results) >= limit:
+                break
+    
+    if results:
+        return results
+    
+    # 3. Partial Code Match (code starts with query)
+    for code, info in twstock.codes.items():
+        if code.startswith(query):
+            results.append({"code": info.code, "name": info.name})
+            if len(results) >= limit:
+                break
+    
+    # 4. Partial Name Match (name contains query)
+    if len(results) < limit:
+        for code, info in twstock.codes.items():
+            if query in info.name:
+                # Avoid duplicates
+                if not any(r['code'] == code for r in results):
+                    results.append({"code": info.code, "name": info.name})
+                    if len(results) >= limit:
+                        break
+    
+    return results
 
+
+def get_stocks_realtime(stock_codes: List[str]) -> List[Dict]:
+    """
+    Batch fetch real-time data for multiple stocks.
+    Uses TWSE MIS API for real-time quotes during market hours.
+    
+    Args:
+        stock_codes: List of stock codes (e.g. ['2330', '2454'])
+        
+    Returns:
+        List of stock data dicts with real-time information
+    """
+    results = []
+    
+    try:
+        from app.services.realtime_quotes import get_realtime_quote
+        from datetime import datetime
+        
+        now = datetime.now()
+        is_market_hours = (9 <= now.hour < 14) and now.weekday() < 5
+        
+        for code in stock_codes:
+            try:
+                # Get stock name
+                stock_name = code
+                if code in twstock.codes:
+                    stock_name = twstock.codes[code].name
+                
+                # Get real-time data if market is open
+                if is_market_hours:
+                    quote = get_realtime_quote(code)
+                    if quote and quote.get('close'):
+                        results.append({
+                            'code': code,
+                            'name': stock_name,
+                            'price': float(quote.get('close', 0)),
+                            'change': float(quote.get('change', 0)),
+                            'change_percent': float(quote.get('change_percent', 0)),
+                            'volume': int(quote.get('volume', 0)),
+                            'bid_ask_ratio': float(quote.get('bid_ask_ratio', 0)),
+                            'high': float(quote.get('high', 0)),
+                            'low': float(quote.get('low', 0)),
+                            'open': float(quote.get('open', 0))
+                        })
+                        continue
+                
+                # Fallback to yfinance for non-market hours or if MIS fails
+                ticker_symbol = get_yahoo_ticker(code)
+                ticker = yf.Ticker(ticker_symbol)
+                hist = ticker.history(period='5d')
+                
+                if not hist.empty:
+                    current = hist.iloc[-1]
+                    prev = hist.iloc[-2] if len(hist) >= 2 else current
+                    
+                    results.append({
+                        'code': code,
+                        'name': stock_name,
+                        'price': float(current['Close']),
+                        'change': float(current['Close'] - prev['Close']),
+                        'change_percent': float((current['Close'] - prev['Close']) / prev['Close'] * 100) if prev['Close'] != 0 else 0,
+                        'volume': int(current['Volume']),
+                        'bid_ask_ratio': 0,  # Not available from yfinance
+                        'high': float(current['High']),
+                        'low': float(current['Low']),
+                        'open': float(current['Open'])
+                    })
+            except Exception as e:
+                print(f"Error fetching data for {code}: {e}")
+                continue
+    
+    except Exception as e:
+        print(f"Error in get_stocks_realtime: {e}")
+    
+    return results

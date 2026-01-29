@@ -94,6 +94,11 @@
                             style="border: 1px solid #f85149; color: #f85149;">
                             <span class="icon">💰</span> 高股息
                         </button>
+                        <!-- 我的監控按鈕 -->
+                        <button class="investor-btn" onclick="openWatchlistModal()"
+                            style="border: 1px solid #ffa657; color: #ffa657;">
+                            <span class="icon">🎯</span> 我的監控
+                        </button>
                     </div>
                 </div>
     </div>
@@ -298,7 +303,87 @@
         </div>
     </div>
 
-    <script src="/static/script_v2.js?v=4"></script>
+    <!-- 我的監控 Modal -->
+    <div id="watchlist-modal" class="modal hidden">
+        <div class="modal-content investor-modal-content" style="max-width: 1200px;">
+            <div class="modal-header">
+                <h2>🎯 我的監控清單</h2>
+                <button class="close-modal-btn" onclick="closeWatchlistModal()">✕</button>
+            </div>
+
+            <!-- 新增監控區 -->
+            <div
+                style="background: #161b22; padding: 20px; border-radius: 6px; margin-bottom: 20px; border: 1px solid #30363d;">
+                <h3 style="margin-top: 0;">➕ 新增監控</h3>
+
+                <!-- 搜尋股票 -->
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 8px; color: #e6edf3;">搜尋股票</label>
+                    <div style="position: relative;">
+                        <input type="text" id="watchlist-search" placeholder="輸入股票代號或名稱（例如：台積電、2330）"
+                            style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #30363d; background: #0d1117; color: #e6edf3;">
+                        <div id="watchlist-search-results" class="watchlist-search-results hidden"></div>
+                    </div>
+                </div>
+
+                <!-- 選中的股票 -->
+                <div id="watchlist-selected-stock" class="hidden"
+                    style="padding: 12px; background: #0d1117; border-radius: 6px; margin-bottom: 15px;">
+                    <strong id="selected-stock-name" style="color: #58a6ff;"></strong>
+                </div>
+
+                <!-- 警示條件設定 -->
+                <div id="watchlist-alert-config" class="hidden">
+                    <h4 style="margin-bottom: 12px;">設定警示條件</h4>
+                    <div class="alert-config-grid">
+                        <div class="alert-config-item">
+                            <label><input type="checkbox" class="alert-enabled" data-type="price_above"> 價格突破</label>
+                            <input type="number" class="alert-value" data-type="price_above" placeholder="目標價格"
+                                step="0.1">
+                        </div>
+                        <div class="alert-config-item">
+                            <label><input type="checkbox" class="alert-enabled" data-type="price_below"> 價格跌破</label>
+                            <input type="number" class="alert-value" data-type="price_below" placeholder="目標價格"
+                                step="0.1">
+                        </div>
+                        <div class="alert-config-item">
+                            <label><input type="checkbox" class="alert-enabled" data-type="change_percent_above"> 漲幅超過
+                                (%)</label>
+                            <input type="number" class="alert-value" data-type="change_percent_above" placeholder="3.0"
+                                step="0.1">
+                        </div>
+                        <div class="alert-config-item">
+                            <label><input type="checkbox" class="alert-enabled" data-type="change_percent_below"> 跌幅超過
+                                (%)</label>
+                            <input type="number" class="alert-value" data-type="change_percent_below" placeholder="-2.0"
+                                step="0.1">
+                        </div>
+                    </div>
+                    <button onclick="addWatchlistItem()" class="investor-btn"
+                        style="margin-top: 15px; background: #238636; color: white; border: none; padding: 8px 16px;">加入監控</button>
+                </div>
+            </div>
+
+            <!-- 監控清單 -->
+            <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="margin: 0;">📋 監控項目</h3>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <span id="watchlist-status" style="color: #8b949e; font-size: 0.9em;">未啟動</span>
+                        <button id="watchlist-toggle" onclick="toggleWatchlistPolling()" class="investor-btn"
+                            style="padding: 6px 12px; font-size: 0.9em;">啟動監控</button>
+                    </div>
+                </div>
+                <div id="watchlist-items" class="watchlist-grid">
+                    <!-- 監控項目卡片將在這裡產生 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/watchlist.js"></script>
+    <script src="/static/watchlist-ui.js"></script>
+    <script src="/static/script_v2.js?v=5"></script>
 </body>
 
 </html>

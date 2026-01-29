@@ -941,3 +941,80 @@ button:hover {
         padding-bottom: 15px;
     }
 }
+/* ========================================
+   監控清單功能樣式
+   ======================================== */
+
+/* 監控清單網格 */
+.watchlist-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* 監控卡片樣式繼承自 .watchlist-card，在 watchlist-ui.js 中定義 */
+
+/* 搜尋結果下拉 */
+.watchlist-search-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    max-height: 300px;
+    overflow-y: auto;
+    z-index: 1000;
+    margin-top: -1px;
+}
+
+/* 警示條件網格 */
+.alert-config-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 15px;
+}
+
+.alert-config-item {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.alert-config-item label {
+    color: var(--text-primary);
+    font-size: 0.95em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.alert-config-item input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: #1f6feb;
+}
+
+.alert-config-item input[type="number"] {
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #30363d;
+    background: #0d1117;
+    color: #e6edf3;
+    font-size: 0.95em;
+}
+
+.alert-config-item input[type="number"]:focus {
+    outline: none;
+    border-color: #58a6ff;
+    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .alert-config-grid {
+        grid-template-columns: 1fr;
+    }
+}

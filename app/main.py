@@ -69,11 +69,35 @@ async def api_layout_stocks(investor_type: str, days: int = 90, min_score: float
 
 
 @app.get("/api/search")
-async def api_search(query: str):
-    result = search_stock_code(query)
-    if result:
-        return result
-    return {"error": "Not Found"}
+async def api_search(query: str, limit: int = 10):
+    """
+    搜尋股票（支援模糊搜尋）
+    
+    Args:
+        query: 搜尋關鍵字（代號或名稱）
+        limit: 回傳結果數量上限
+    """
+    results = search_stock_code(query, limit)
+    if results:
+        return results
+    return []
+
+@app.get("/api/watchlist/check")
+async def api_watchlist_check(codes: str):
+    """
+    批次查詢股票即時資料（用於監控清單）
+    
+    Args:
+        codes: 逗號分隔的股票代號，例如 "2330,2454,2317"
+    """
+    from app.services.stock_data import get_stocks_realtime
+    
+    stock_codes = [code.strip() for code in codes.split(',') if code.strip()]
+    
+    if not stock_codes:
+        return []
+    
+    return get_stocks_realtime(stock_codes)
 
 @app.get("/api/breakout-stocks")
 async def api_breakout_stocks():
