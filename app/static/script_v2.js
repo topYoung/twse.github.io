@@ -1492,11 +1492,19 @@ async function openMajorInvestorsModal() {
 
     try {
         const response = await fetch('/api/layout-stocks/major?days=3&top_n=50');
+
+        // Debugging Helper: Check response status
+        if (!response.ok) {
+            const errorText = await response.text();
+            alert(`主力分析載入失敗 (Status: ${response.status})\n錯誤訊息: ${errorText.substring(0, 300)}`);
+            throw new Error(`API Error: ${response.status} ${errorText}`);
+        }
+
         const stocks = await response.json();
 
         loading.classList.add('hidden');
 
-        if (!stocks || stocks.length === 0) {
+        if (!stocks || !Array.isArray(stocks) || stocks.length === 0) {
             container.innerHTML = '<div style="grid-column: 1/-1; text-align: center;">目前無明顯主力買超訊號</div>';
             return;
         }
@@ -1528,7 +1536,7 @@ function createMajorInvestorCard(stock) {
 
     // Format total net (sheets)
     const totalNetStr = (stock.total_net / 1000).toFixed(1) + '張';
-    
+
     // Details for tooltip or small text
     const fNet = Math.round(stock.details.foreign / 1000);
     const tNet = Math.round(stock.details.trust / 1000);
