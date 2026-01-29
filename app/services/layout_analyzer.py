@@ -380,67 +380,80 @@ def get_major_investors_layout(days: int = 3, top_n: int = 50) -> List[Dict]:
     Returns:
         股票清單，依合計買超張數排序
     """
-    investors = ['foreign', 'trust', 'dealer']
-    stock_stats = defaultdict(lambda: {
-        'total_net': 0, 
-        'buy_days': 0, 
-        'stock_name': '', 
-        'details': {'foreign': 0, 'trust': 0, 'dealer': 0}
-    })
-    
-    # 1. 聚合三大法人數據
-    for inv in investors:
-        # 獲取近 N 天資料
-        # 注意：需使用 fetch_historical_data，但只取後 N 筆可能不夠精準（因為可能有空檔）
-        # 這裡直接用 fetch_historical_data 抓 days=days 即可
-        # 但 institutional_data.fetch_historical_data 的 days 參數是從今天往回推 N 天
-        # 這符合 "近 N 天" 的定義
-        data_map = fetch_historical_data(inv, days=days * 2) # 多抓一點避免假日導致天數不足
-        
-        # 只取最近 "實際交易日" 的 days 天
-        sorted_dates = sorted(data_map.keys(), reverse=True)[:days]
-        
-        for date_str in sorted_dates:
-            stocks = data_map[date_str]
-            for s in stocks:
-                code = s['stock_code']
-                net = s['net']
-                
-                stock_stats[code]['stock_name'] = s['stock_name']
-                stock_stats[code]['total_net'] += net
-                stock_stats[code]['details'][inv] += net
-                
-                if net > 0:
-                    stock_stats[code]['buy_days'] += 1
 
-    # 2. 轉換格式並排序
-    results = []
-    for code, stats in stock_stats.items():
-        # 過濾掉總買超 <= 0 的
-        if stats['total_net'] <= 0:
-            continue
-            
-        # 獲取類別
-        category = '其他'
-        if code in STOCK_SUB_CATEGORIES:
-            category = STOCK_SUB_CATEGORIES[code]
-        elif code in twstock.codes:
-            info = twstock.codes[code]
-            if info.group:
-                category = info.group.replace('業', '')
-
-        results.append({
-            'stock_code': code,
-            'stock_name': stats['stock_name'],
-            'category': category,
-            'total_net': stats['total_net'],
-            'buy_days': stats['buy_days'], # 這裡的 buy_days 是三法人加總的天數，參考價值較低，僅供參考
-            'details': stats['details'],
-            'layout_score': 0, # 主力不計算複雜評分，純看量
-            'days_analyzed': days
+    try:
+        investors = ['foreign', 'trust', 'dealer']
+        stock_stats = defaultdict(lambda: {
+            'total_net': 0, 
+            'buy_days': 0, 
+            'stock_name': '', 
+            'details': {'foreign': 0, 'trust': 0, 'dealer': 0}
         })
-    
-    # 依合計買超張數排序 (由大到小)
-    results.sort(key=lambda x: x['total_net'], reverse=True)
-    
-    return results[:top_n]
+        
+        # 1. 聚合三大法人數據
+        for inv in investors:
+            # 獲取近 N 天資料
+            data_map = fetch_historical_data(inv, days=days * 2) # 多抓一點避免假日導致天數不足
+            
+            if not data_map:
+                continue
+
+            # 只取最近 "實際交易日" 的 days 天
+            sorted_dates = sorted(data_map.keys(), reverse=True)[:days]
+            
+            for date_str in sorted_dates:
+                stocks = data_map[date_str]
+                if not stocks: continue
+                
+                for s in stocks:
+                    code = s['stock_code']
+                    net = s['net']
+                    
+                    stock_stats[code]['stock_name'] = s['stock_name']
+                    stock_stats[code]['total_net'] += net
+                    stock_stats[code]['details'][inv] += net
+                    
+                    if net > 0:
+                        stock_stats[code]['buy_days'] += 1
+
+        # 2. 轉換格式並排序
+        results = []
+        for code, stats in stock_stats.items():
+            # 過濾掉總買超 <= 0 的
+            if stats['total_net'] <= 0:
+                continue
+                
+            # 獲取類別
+            category = '其他'
+            # Try/Except for category lookup to be safe
+            try:
+                if code in STOCK_SUB_CATEGORIES:
+                    category = STOCK_SUB_CATEGORIES[code]
+                elif code in twstock.codes:
+                    info = twstock.codes[code]
+                    if info.group:
+                        category = info.group.replace('業', '')
+            except:
+                pass
+
+            results.append({
+                'stock_code': code,
+                'stock_name': stats['stock_name'],
+                'category': category,
+                'total_net': stats['total_net'],
+                'buy_days': stats['buy_days'], # 這裡的 buy_days 是三法人加總的天數，參考價值較低，僅供參考
+                'details': stats['details'],
+                'layout_score': 0, # 主力不計算複雜評分，純看量
+                'days_analyzed': days
+            })
+        
+        # 依合計買超張數排序 (由大到小)
+        results.sort(key=lambda x: x['total_net'], reverse=True)
+        
+        return results[:top_n]
+        
+    except Exception as e:
+        print(f"Error in get_major_investors_layout: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
