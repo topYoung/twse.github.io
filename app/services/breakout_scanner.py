@@ -108,6 +108,94 @@ def analyze_volume_trend(hist, days=5):
     }
 
 
+def classify_volume_signal(today_vol, avg_vol):
+    """
+    根據成交量比率分類量能訊號
+    
+    Args:
+        today_vol: 當日成交量
+        avg_vol: 平均成交量
+    
+    Returns:
+        str: 量能訊號標籤（'🔥 爆量上漲' / '📈 帶量上漲' / '⚠️ 量能不足' / '➡️ 量能持平'）
+    """
+    vol_ratio = today_vol / (avg_vol + 1)
+    
+    if vol_ratio >= 2.5:
+        return '🔥 爆量上漲'
+    elif vol_ratio >= 1.5:
+        return '📈 帶量上漲'
+    elif vol_ratio < 0.8:
+        return '⚠️ 量能不足'
+    else:
+        return '➡️ 量能持平'
+
+
+def detect_upper_shadow_after_decline(hist, decline_days=3, shadow_ratio=1.5):
+    """
+    偵測多日下跌後出現上引線（準備反彈訊號）
+    
+    Args:
+        hist: 歷史資料 DataFrame
+        decline_days: 檢查連續下跌天數（預設 3 天）
+        shadow_ratio: 上影線/實體比率門檻（預設 1.5 倍）
+    
+    Returns:
+        dict: {
+            'has_upper_shadow': bool,
+            'decline_count': int,
+            'shadow_length': float,
+            'body_length': float,
+            'shadow_ratio': float
+        }
+    """
+    if len(hist) < decline_days + 1:
+        return {
+            'has_upper_shadow': 0,  # 使用 int (0/1) 確保 JSON 序列化
+            'decline_count': 0,
+            'shadow_length': 0.0,
+            'body_length': 0.0,
+            'shadow_ratio': 0.0
+        }
+    
+    # 檢查前 N 天是否連續下跌
+    recent_prices = hist['Close'].tail(decline_days + 1)
+    decline_count = 0
+    for i in range(len(recent_prices) - 1):
+        if recent_prices.iloc[i] > recent_prices.iloc[i + 1]:
+            decline_count += 1
+        else:
+            break  # 不連續就中斷
+    
+    # 檢查最後一根 K 棒是否有上引線
+    today = hist.iloc[-1]
+    high = today['High']
+    close = today['Close']
+    open_price = today['Open']
+    
+    # 計算上影線長度
+    shadow_length = high - max(close, open_price)
+    
+    # 計算實體長度
+    body_length = abs(close - open_price)
+    
+    # 計算比率（避免除以零）
+    shadow_ratio_value = shadow_length / body_length if body_length > 0 else 0
+    
+    has_upper_shadow = (
+        decline_count >= decline_days and
+        shadow_ratio_value >= shadow_ratio
+    )
+    
+    return {
+        'has_upper_shadow': int(has_upper_shadow),  # 轉換為 int (0/1) 確保 JSON 序列化
+        'decline_count': int(decline_count),
+        'shadow_length': round(float(shadow_length), 2),
+        'body_length': round(float(body_length), 2),
+        'shadow_ratio': round(float(shadow_ratio_value), 2)
+    }
+
+
 def get_breakout_stocks(force_refresh=False):
     """
     Scans for stocks that:
@@ -119,14 +207,18 @@ def get_breakout_stocks(force_refresh=False):
     try:
         global _breakout_cache
         
-        current_time = time.time()
+        # Determine current market state
         now = datetime.now()
-        # Taiwan Market: 09:00 - 13:30. We allow 09:00 - 14:00 for buffer.
-        is_market_hours = (now.hour >= 9 and now.hour < 14) and now.weekday() < 5
-        is_pre_market = now.hour < 9 and now.weekday() < 5
-
-        # Cache duration: 1 minute during market, 1 hour (3600s) outside market
-        cache_duration = 60 if is_market_hours else 3600
+        current_time = time.time()  # Fix NameError
+        # Market hours: Mon-Fri 09:00 - 13:30 (approx)
+        is_market_hours = (9 <= now.hour < 14) and now.weekday() < 5
+        is_pre_market = (8 <= now.hour < 9) and now.weekday() < 5
+        
+        # Cache duration strategy
+        if is_market_hours:
+            cache_duration = 30  # 盤中 30 秒更新一次 (配合即時報價)
+        else:
+            cache_duration = 1800 # 盤後 30 分鐘更新一次
         
         with _cache_lock:
             if not force_refresh and _breakout_cache["data"]:
@@ -155,12 +247,21 @@ def get_breakout_stocks(force_refresh=False):
         # 2. Get latest institutional data (one-time fetch)
         inst_data = get_latest_institutional_data()
         
+        # === 盤中批次獲取即時數據 (優化效能) ===
+        intraday_data_map = {}
+        if is_market_hours:
+            from app.services.realtime_quotes import get_batch_intraday_candles
+            # print(f"正在批次獲取 {len(all_stocks)} 檔股票的即時報價...")
+            intraday_data_map = get_batch_intraday_candles(all_stocks)
+        
         results = []
         
         # Use ThreadPool to scan fast
         try:
-            with ThreadPoolExecutor(max_workers=50) as executor:
-                futures = [executor.submit(check_breakout_v2, code, inst_data) for code in all_stocks]
+            # 降低併發數以減少系統負載
+            with ThreadPoolExecutor(max_workers=20) as executor:
+                # 傳入 intraday_data
+                futures = [executor.submit(check_breakout_v2, code, inst_data, intraday_data_map.get(code)) for code in all_stocks]
                 for future in futures:
                     try:
                         res = future.result()
@@ -218,10 +319,14 @@ def get_breakout_stocks(force_refresh=False):
             "is_pre_market": False
         }
 
-def check_breakout_v2(stock_code, inst_data_map):
+def check_breakout_v2(stock_code, inst_data_map, intraday_data=None):
     """
     Enhanced breakout check including institutional data.
     使用動態閾值提升精確性（已整合高優先級改進 1.1, 1.2, 1.3）
+    Args:
+        stock_code: 股票代碼
+        inst_data_map: 法人數據
+        intraday_data: 即時 K 棒數據 (選填)
     """
     try:
         inst = inst_data_map.get(stock_code, {})
@@ -231,6 +336,37 @@ def check_breakout_v2(stock_code, inst_data_map):
         ticker = yf.Ticker(ticker_symbol)
         
         hist = ticker.history(period="6mo")
+        
+        # === 盤中時段整合即時數據 (使用批次獲取結果) ===
+        if intraday_data:
+            try:
+                # 若有傳入即時數據且有成交量，則附加到歷史數據
+                if intraday_data['volume'] > 0:
+                    # 建立今日 K 棒 DataFrame
+                    today_index = pd.Timestamp.now().normalize()  # 當日日期（00:00:00）
+                    today_df = pd.DataFrame([{
+                        'Open': intraday_data['open'],
+                        'High': intraday_data['high'],
+                        'Low': intraday_data['low'],
+                        'Close': intraday_data['close'],
+                        'Volume': intraday_data['volume']
+                    }], index=[today_index])
+                    
+                    # 避免重複：檢查最後一根 K 棒日期
+                    if not hist.empty:
+                        last_date = hist.index[-1].normalize()
+                        if last_date == today_index:
+                            # 今日數據已存在（盤後 Yahoo 可能已更新），替換為即時數據
+                            hist = hist[:-1]
+                    
+                    # 合併數據
+                    hist = pd.concat([hist, today_df])
+                    hist = hist.astype(float)  # 確保類型一致
+                    
+                    # print(f"[{stock_code}] 盤中數據已整合 - 現價: {intraday_data['close']}")
+            except Exception as e:
+                pass
+
         if len(hist) < 60: return None
         
         today = hist.iloc[-1]
@@ -275,10 +411,6 @@ def check_breakout_v2(stock_code, inst_data_map):
         
         price_break = current_price > (cons_high * 1.005)
         strong_spike = change_percent >= 3.5
-        
-        if not (price_break or strong_spike):
-            if not (has_sudden_buy and change_percent > 1.0):
-                return None
 
         # === 技術指標計算（加入多週期驗證）===
         # 基本指標
@@ -300,6 +432,12 @@ def check_breakout_v2(stock_code, inst_data_map):
         
         # 量能趨勢分析
         vol_trend = analyze_volume_trend(hist, days=5)
+        
+        # 量能訊號分類
+        volume_signal = classify_volume_signal(today_vol, avg_vol_period)
+        
+        # 上引線偵測（多日下跌後的反彈訊號）
+        upper_shadow_info = detect_upper_shadow_after_decline(hist, decline_days=3, shadow_ratio=1.5)
 
         # Low Base Check (Added)
         recent_60 = hist['Close'].iloc[-60:]
@@ -308,7 +446,7 @@ def check_breakout_v2(stock_code, inst_data_map):
         position_pct = (current_price - low_60) / (high_60 - low_60) if high_60 > low_60 else 0.5
         is_low_base = position_pct < 0.30 # Under 30% of 60-day range
         
-        # === 改進的有效性判斷 ===
+        # === 改進的有效性判斷（已移除漲幅限制）===
         is_valid = False
         reason = ""
         
@@ -324,10 +462,22 @@ def check_breakout_v2(stock_code, inst_data_map):
             reason = "突破盤整區"
             if has_sudden_buy:
                 reason = "法人大買+突破"
-        # 策略 3: 法人主導突破（量比要求降低）
-        elif has_sudden_buy and change_percent >= 2.0 and vol_ratio >= 1.0:
+        # 策略 3: 法人主導（已移除漲幅限制，只要正漲即可）
+        elif has_sudden_buy and change_percent > 0 and vol_ratio >= 1.0:
             is_valid = True
             reason = "法人佈局發動"
+        # 策略 4: 帶量上漲（移除漲幅限制）
+        elif vol_ratio >= 1.8 and change_percent > 0:
+            is_valid = True
+            reason = "帶量上漲"
+        # 策略 5: 多日下跌後上引線（新增）
+        elif upper_shadow_info['has_upper_shadow']:
+            is_valid = True
+            reason = f"📍 下跌後上引線({upper_shadow_info['decline_count']}日)"
+        # 策略 6: 突破盤整區但量能不足（放寬條件）
+        elif price_break and change_percent > 0:
+            is_valid = True
+            reason = "突破盤整區"
             
         if is_low_base and is_valid:
             reason = "💎 低檔" + reason
@@ -384,6 +534,10 @@ def check_breakout_v2(stock_code, inst_data_map):
         # 3. 量能診斷
         if vol_trend['is_healthy']:
             diagnostics.append("📈 健康放量")
+        
+        # 4. 上引線特徵
+        if upper_shadow_info['has_upper_shadow']:
+            diagnostics.append(f"📍 上引線(比率{upper_shadow_info['shadow_ratio']}x)")
 
 
         return {
@@ -396,12 +550,14 @@ def check_breakout_v2(stock_code, inst_data_map):
             "diagnostics": diagnostics,
             "volume": int(today_vol) if math.isfinite(today_vol) else 0,
             "vol_ratio": safe_round(vol_ratio, 1) or 0.0,
-            "vol_trend_growth": safe_round(vol_trend['growth_rate'] * 100, 1),  # 新增
+            "vol_trend_growth": safe_round(vol_trend['growth_rate'] * 100, 1),
+            "volume_signal": volume_signal,  # 新增：量能訊號分類
             "inst_net": int(inst_net) if math.isfinite(inst_net) else 0,
             "box_days": int(cons_days),
             "amplitude": safe_round(best_amplitude * 100, 1) or 0.0,
-            "box_threshold_used": safe_round(box_threshold * 100, 1),  # 新增：顯示使用的閾值
+            "box_threshold_used": safe_round(box_threshold * 100, 1),
             "position_pct": safe_round(position_pct * 100, 1) or 0.0,
+            "upper_shadow": upper_shadow_info,  # 新增：上引線資訊
             "kd_k": safe_round(k, 1),
             "kd_d": safe_round(d, 1),
             "rsi": safe_round(rsi, 1),

@@ -192,3 +192,4 @@ def compute_macd_with_trend(close: pd.Series, fast: int = 12, slow: int = 26, si
 
 
 
+

@@ -85,3 +85,166 @@ def get_realtime_quotes(stock_codes: List[str]) -> Dict[str, Dict]:
             print(f"Error fetching realtime quotes for chunk {chunk}: {e}")
             
     return results
+
+
+def get_intraday_candle(stock_code: str) -> Optional[Dict]:
+    """
+    獲取單一股票的盤中即時 K 棒
+    
+    Args:
+        stock_code: 股票代碼 (例如: '2330')
+    
+    Returns:
+        {
+            'open': float,
+            'high': float,
+            'low': float,
+            'close': float,
+            'volume': int,
+            'yesterday_close': float,
+            'change_percent': float
+        }
+        若獲取失敗則回傳 None
+    """
+    try:
+        ex_ch = f"tse_{stock_code}.tw|otc_{stock_code}.tw"
+        ts = int(time.time() * 1000)
+        url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch={ex_ch}&json=1&delay=0&_{ts}"
+        
+        context = ssl._create_unverified_context()
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, context=context, timeout=5) as response:
+            data = response.read().decode('utf-8')
+            json_data = json.loads(data)
+            
+            if 'msgArray' not in json_data or len(json_data['msgArray']) == 0:
+                return None
+            
+            info = json_data['msgArray'][0]
+            
+            def safe_float(v, default=0.0):
+                if not v or v == '-': return default
+                try: return float(v)
+                except: return default
+            
+            def safe_int(v, default=0):
+                if not v or v == '-': return default
+                try: return int(v)
+                except: return default
+            
+            yesterday_close = safe_float(info.get('y'))
+            current_price = safe_float(info.get('z'), yesterday_close)  # 若無成交用昨收
+            open_price = safe_float(info.get('o'), yesterday_close)
+            high_price = safe_float(info.get('h'), current_price)
+            low_price = safe_float(info.get('l'), current_price)
+            volume = safe_int(info.get('v'))  # 成交量（張）
+            
+            # 計算漲幅
+            change_percent = ((current_price - yesterday_close) / yesterday_close * 100) if yesterday_close > 0 else 0.0
+            
+            return {
+                'open': open_price,
+                'high': high_price,
+                'low': low_price,
+                'close': current_price,
+                'volume': volume * 1000,  # 轉換為股數（1張=1000股）
+                'yesterday_close': yesterday_close,
+                'change_percent': round(change_percent, 2)
+            }
+    except Exception as e:
+        print(f"Error fetching intraday candle for {stock_code}: {e}")
+        return None
+
+
+def get_batch_intraday_candles(stock_codes: List[str]) -> Dict[str, Optional[Dict]]:
+    """
+    批次獲取多檔股票的盤中即時 K 棒（優化效能）
+    
+    Args:
+        stock_codes: 股票代碼列表
+    
+    Returns:
+        {
+            'stock_code': {candle_data},
+            ...
+        }
+    """
+    results = {}
+    
+    # 每次請求最多 5 檔 (降低被擋機率)
+    chunk_size = 5
+    for i in range(0, len(stock_codes), chunk_size):
+        chunk = stock_codes[i:i + chunk_size]
+        
+        # Add conservative delay
+        time.sleep(3.0)
+        
+        try:
+            # 建立查詢字串
+            ex_ch_list = []
+            for code in chunk:
+                ex_ch_list.append(f"tse_{code}.tw")
+                ex_ch_list.append(f"otc_{code}.tw")
+            
+            ex_ch = "|".join(ex_ch_list)
+            ts = int(time.time() * 1000)
+            url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch={ex_ch}&json=1&delay=0&_{ts}"
+            
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Referer": "https://mis.twse.com.tw/stock/fibest.jsp?stock=2330",
+                "Accept": "application/json, text/javascript, */*; q=0.01",
+                "X-Requested-With": "XMLHttpRequest"
+            }
+            
+            context = ssl._create_unverified_context()
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, context=context, timeout=10) as response:
+                data = response.read().decode('utf-8')
+                json_data = json.loads(data)
+                
+                if 'msgArray' in json_data:
+                    for info in json_data['msgArray']:
+                        code = info.get('c')
+                        if not code: continue
+                        
+                        def safe_float(v, default=0.0):
+                            if not v or v == '-': return default
+                            try: return float(v)
+                            except: return default
+                        
+                        def safe_int(v, default=0):
+                            if not v or v == '-': return default
+                            try: return int(v)
+                            except: return default
+                        
+                        yesterday_close = safe_float(info.get('y'))
+                        current_price = safe_float(info.get('z'), yesterday_close)
+                        open_price = safe_float(info.get('o'), yesterday_close)
+                        high_price = safe_float(info.get('h'), current_price)
+                        low_price = safe_float(info.get('l'), current_price)
+                        volume = safe_int(info.get('v'))
+                        
+                        change_percent = ((current_price - yesterday_close) / yesterday_close * 100) if yesterday_close > 0 else 0.0
+                        
+                        results[code] = {
+                            'open': open_price,
+                            'high': high_price,
+                            'low': low_price,
+                            'close': current_price,
+                            'volume': volume * 1000,
+                            'yesterday_close': yesterday_close,
+                            'change_percent': round(change_percent, 2)
+                        }
+        except Exception as e:
+            print(f"Error fetching batch intraday candles for chunk {chunk}: {e}")
+    
+    # 填補未獲取到的股票
+    for code in stock_codes:
+        if code not in results:
+            results[code] = None
+    
+    return results
