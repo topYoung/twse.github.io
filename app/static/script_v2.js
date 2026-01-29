@@ -689,7 +689,7 @@ function createLayoutStockCard(stock, investorType) {
     card.className = 'stock-card layout-stock-card';
     card.onclick = () => {
         // closeLayoutStocksModal(); // Maintain modal in background
-        openChart(stock.stock_code, stock.stock_name, '法人佈局');
+        openChart(stock.stock_code, stock.stock_name, stock.category || '法人佈局');
     };
 
     const netClass = stock.total_net >= 0 ? 'up' : 'down';
@@ -847,7 +847,7 @@ function createBreakoutCard(stock) {
     card.className = 'stock-card breakout-card';
     card.style.borderLeft = '4px solid #da3633'; // Highlight Red
     card.onclick = () => {
-        openChart(stock.code, stock.name, '起漲訊號');
+        openChart(stock.code, stock.name, stock.category || '起漲訊號');
     };
 
     if (stock.is_low_base) {
@@ -978,7 +978,7 @@ function createReboundCard(stock) {
     card.className = 'stock-card';
     card.style.borderLeft = '4px solid #d29922'; // Highlight Gold
     card.onclick = () => {
-        openChart(stock.code, stock.name, '低檔轉強');
+        openChart(stock.code, stock.name, stock.category || '低檔轉強');
     };
 
     // Calculate diff from low
@@ -1174,7 +1174,7 @@ function createMultiLayoutCard(stock, mode) {
     card.style.borderLeft = mode === 'all-3' ? '4px solid #d29922' : '4px solid #a371f7';
 
     card.onclick = () => {
-        openChart(stock.stock_code, stock.stock_name, '多法人佈局');
+        openChart(stock.stock_code, stock.stock_name, stock.category || '多法人佈局');
     };
 
     const netClass = stock.total_net >= 0 ? 'up' : 'down';
@@ -1430,7 +1430,7 @@ function createHighDividendCard(stock) {
     card.style.borderLeft = '4px solid #f85149';
 
     card.onclick = () => {
-        openChart(stock.code, stock.name, '高股息');
+        openChart(stock.code, stock.name, stock.category || '高股息');
     };
 
     const priceClass = stock.change_percent >= 0 ? 'up' : 'down';

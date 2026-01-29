@@ -232,6 +232,48 @@ def get_stock_history(stock_code, interval='1d'):
         ticker = yf.Ticker(ticker_symbol)
         hist = ticker.history(period=api_period, interval=api_interval)
         
+        # === 盤中即時數據整合 (僅針對日線 1d) ===
+        if interval == '1d':
+            from datetime import datetime
+            now = datetime.now()
+            # 判斷是否為盤中 (09:00 - 13:30)
+            is_market_hours = (9 <= now.hour < 14) and now.weekday() < 5
+            
+            if is_market_hours:
+                try:
+                    from app.services.realtime_quotes import get_intraday_candle
+                    intraday = get_intraday_candle(stock_code)
+                    
+                    if intraday and intraday['volume'] > 0:
+                        today_ts = pd.Timestamp.now().normalize()
+                        
+                        # 檢查歷史數據最後一筆日期
+                        last_date = pd.NaT
+                        if not hist.empty:
+                            last_date = hist.index[-1].normalize()
+                        
+                        today_row = pd.Series({
+                            'Open': intraday['open'],
+                            'High': intraday['high'],
+                            'Low': intraday['low'],
+                            'Close': intraday['close'],
+                            'Volume': intraday['volume']
+                        }, name=today_ts)
+                        
+                        if not hist.empty and last_date == today_ts:
+                            # 如果 Yahoo 已經有今日數據，用即時數據覆蓋 (通常即時數據更準)
+                            hist.iloc[-1] = today_row
+                            # 重新計算因為覆蓋而可能變動的指標 (雖然這裡還沒算 MA)
+                        else:
+                            # 附加今日數據
+                            hist = pd.concat([hist, pd.DataFrame([today_row])])
+                            
+                        # 確保索引排序
+                        hist.sort_index(inplace=True)
+                except Exception as e:
+                    print(f"Error merging intraday data for {stock_code}: {e}")
+                    pass
+
         # Calculate Moving Averages
         hist['MA5'] = hist['Close'].rolling(window=5).mean()
         hist['MA10'] = hist['Close'].rolling(window=10).mean()
