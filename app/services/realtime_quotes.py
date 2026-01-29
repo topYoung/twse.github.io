@@ -239,8 +239,10 @@ def get_batch_intraday_candles(stock_codes: List[str]) -> Dict[str, Optional[Dic
                             'yesterday_close': yesterday_close,
                             'change_percent': round(change_percent, 2)
                         }
-        except Exception as e:
-            print(f"Error fetching batch intraday candles for chunk {chunk}: {e}")
+        except Exception:
+            # Silently ignore connection errors to prevent console spam
+            # The system will fallback to historical data automatically
+            pass
     
     # 填補未獲取到的股票
     for code in stock_codes:

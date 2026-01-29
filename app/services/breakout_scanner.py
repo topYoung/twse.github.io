@@ -216,7 +216,7 @@ def get_breakout_stocks(force_refresh=False):
         
         # Cache duration strategy
         if is_market_hours:
-            cache_duration = 30  # 盤中 30 秒更新一次 (配合即時報價)
+            cache_duration = 180  # 盤中 3 分鐘更新一次 (因掃描需時約 2 分鐘)
         else:
             cache_duration = 1800 # 盤後 30 分鐘更新一次
         
