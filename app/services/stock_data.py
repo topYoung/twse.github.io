@@ -240,6 +240,10 @@ def get_stock_history(stock_code, interval='1d'):
         ticker = yf.Ticker(ticker_symbol)
         hist = ticker.history(period=api_period, interval=api_interval)
         
+        # Ensure UTC timezone awareness alignment or remove timezone
+        if not hist.empty and hist.index.tz is not None:
+             hist.index = hist.index.tz_localize(None)
+
         # === 盤中即時數據整合 (僅針對日線 1d) ===
         if interval == '1d':
             from datetime import datetime
@@ -269,12 +273,18 @@ def get_stock_history(stock_code, interval='1d'):
                         }, name=today_ts)
                         
                         if not hist.empty and last_date == today_ts:
-                            # 如果 Yahoo 已經有今日數據，用即時數據覆蓋 (通常即時數據更準)
-                            hist.iloc[-1] = today_row
-                            # 重新計算因為覆蓋而可能變動的指標 (雖然這裡還沒算 MA)
+                            # 如果 Yahoo 已經有今日數據，用即時數據覆蓋
+                            # Update specific columns to avoid shape mismatch
+                            hist.loc[hist.index[-1], ['Open', 'High', 'Low', 'Close', 'Volume']] = [
+                                intraday['open'], intraday['high'], intraday['low'], intraday['close'], intraday['volume']
+                            ]
                         else:
                             # 附加今日數據
-                            hist = pd.concat([hist, pd.DataFrame([today_row])])
+                            # Ensure DataFrame structure matches for concat
+                            today_df = pd.DataFrame([today_row])
+                            # Handle case where hist might be empty or missing columns
+                            today_df = today_df.reindex(columns=hist.columns, fill_value=0) if not hist.empty else today_df
+                            hist = pd.concat([hist, today_df])
                             
                         # 確保索引排序
                         hist.sort_index(inplace=True)
@@ -288,16 +298,22 @@ def get_stock_history(stock_code, interval='1d'):
         hist['MA20'] = hist['Close'].rolling(window=20).mean()
         hist['MA60'] = hist['Close'].rolling(window=60).mean()
         
-        # Format for Lightweight Charts: { time: '2019-04-11', open: 80.01, high: 96.63, low: 76.6, close: 80.29 }
+        # Helper to check validity
+        def is_valid(val):
+            return val is not None and not pd.isna(val) and not math.isinf(float(val))
+
+        # Format for Lightweight Charts
         candlestick_data = []
         ma5_data = []
         ma10_data = []
         ma20_data = []
         ma60_data = []
         
+        import math # ensure math is available
+        
         for date, row in hist.iterrows():
-            # Check for NaNs
-            if pd.isna(row['Open']) or pd.isna(row['Close']):
+            # Check for NaNs in critical fields
+            if not is_valid(row['Open']) or not is_valid(row['Close']):
                 continue
                 
             time_str = date.strftime('%Y-%m-%d')
@@ -309,19 +325,16 @@ def get_stock_history(stock_code, interval='1d'):
                 "high": float(row['High']),
                 "low": float(row['Low']),
                 "close": float(row['Close']),
-                "volume": int(row['Volume'])
+                "volume": int(row['Volume']) if is_valid(row['Volume']) else 0
             })
             
-            # MA data (only if not NaN)
-            if not pd.isna(row['MA5']):
-                ma5_data.append({"time": time_str, "value": float(row['MA5'])})
-            if not pd.isna(row['MA10']):
-                ma10_data.append({"time": time_str, "value": float(row['MA10'])})
-            if not pd.isna(row['MA20']):
-                ma20_data.append({"time": time_str, "value": float(row['MA20'])})
-            if not pd.isna(row['MA60']):
-                ma60_data.append({"time": time_str, "value": float(row['MA60'])})
-        
+            # MA data keys
+            mas = [('MA5', ma5_data), ('MA10', ma10_data), ('MA20', ma20_data), ('MA60', ma60_data)]
+            
+            for key, data_list in mas:
+                if key in row and is_valid(row[key]):
+                    data_list.append({"time": time_str, "value": float(row[key])})
+
         # Get stock info (name and category)
         stock_name = stock_code
         category = '其他'

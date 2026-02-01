@@ -1,17 +1,49 @@
-# Taiwan Stock Categories
+import twstock
 
-# Technology Sector (Electronics, Semi-conductor, Computer, Optoelectronic, etc.)
-TECH_STOCKS = [
-    '2330', '2454', '2317', '2308', '2382', '2303', '3711', '2357', '3008', '3034',
-    '2379', '3037', '2345', '2395', '2412', '2327', '2356', '3231', '3044', '2408',
-    '3443', '6669', '3035', '2376', '6415', '4938', '2360', '3017', '6239',
-    '2344', '2409', '3036', '3006', '2324', '4958', '5269', '2383', '3532', '6278',
-    '2474', '2353', '3661', '6213', '3010', '6269', '5484', '6176', '8016',
-    '8046', '3406', '2449', '3653', '2458', '2439', '4919', '4961', '4968',
-    '3596', '3260', '6271', '3189', '6515', '6531',
-    '6456', '3665', '6643', '6782', '3533', '5258', '3583', '3376',
-    '2455', '3014', '3016', '3019', '3023', '3025', '3028', '3030', '3031', '3033'
+# 手動維護的精細分類 (優先級最高)
+MANUAL_SUB_CATEGORIES = {
+    # === 半導體產業細分 ===
+    # 晶圓代工 (Foundry)
+    '2330': '晶圓代工', '2303': '晶圓代工', '6770': '晶圓代工', '5347': '晶圓代工',
+    # ... (保留原本的字典內容，但在程式碼中用變數區隔) ...
+}
+# 為了避免 replace_file_content 太大，這裡我採取 "Append Strategy" 或是 "Full Rewrite if file small enough".
+# The file is ~120 lines. I can rewrite the top part and add the logic at the bottom.
+
+# Plan:
+# 1. Keep manual lists as "MANUAL_..."
+# 2. Add logic to build the final lists.
+
+# Technology Sector Categories to include
+TECH_SECTOR_NAMES = [
+    '半導體業', '電腦及週邊設備業', '光電業', '通信網路業', 
+    '電子零組件業', '電子通路業', '資訊服務業', '其他電子業'
 ]
+
+def get_all_tech_stocks():
+    stocks = []
+    # Dynamic Map for fallback categories
+    dynamic_map = {}
+    
+    for code, info in twstock.codes.items():
+        if info.type == '股票':
+            # Check if in tech sectors
+            if info.group in TECH_SECTOR_NAMES:
+                # Add suffix for yfinance
+                # Actually our system uses pure codes in these lists usually, and adds suffix in stock_data.py?
+                # Let's check `categories.py` format. It uses strings like '2330'.
+                stocks.append(code)
+                
+                # Create shorthand category (remove '業')
+                cat_name = info.group.replace('業', '')
+                dynamic_map[code] = cat_name
+                
+    return stocks, dynamic_map
+
+_tech_stocks, _tech_category_map = get_all_tech_stocks()
+
+# Public Lists
+TECH_STOCKS = _tech_stocks
 
 # Traditional Sector (Cement, Plastics, Steel, Finance, Shipping, etc.)
 TRAD_STOCKS = [
@@ -25,7 +57,7 @@ TRAD_STOCKS = [
     '1503', '1504', '1506', '1512', '1513', '1514', '1515', '1516', '1517'
 ]
 
-STOCK_SUB_CATEGORIES = {
+MANUAL_SUB_CATEGORIES = {
     # === 半導體產業細分 ===
     # 晶圓代工 (Foundry)
     '2330': '晶圓代工', '2303': '晶圓代工', '6770': '晶圓代工', '5347': '晶圓代工',
@@ -37,6 +69,10 @@ STOCK_SUB_CATEGORIES = {
     '2454': 'IC設計', '3443': 'IC設計', '3034': 'IC設計', '2379': 'IC設計', '3661': 'IC設計',
     '3035': 'IC設計', '6415': 'IC設計', '3698': 'IC設計', '6285': 'IC設計', '3529': 'IC設計',
     '6488': 'IC設計', '3169': 'IC設計', '4966': 'IC設計', '6271': 'IC設計',
+    
+    # IC通路 (IC Distributor)
+    '8096': 'IC通路', '3702': 'IC通路', '3036': 'IC通路', '8112': 'IC通路',
+    '3048': 'IC通路', '3055': 'IC通路',
     
     # 封測 (Package & Test)
     '2311': '封測', '3711': '封測', '2369': '封測', '3450': '封測', '3481': '封測',
@@ -114,3 +150,8 @@ STOCK_SUB_CATEGORIES = {
     '2542': '營建', '5522': '營建', '2548': '營建', '2501': '營建', '9945': '營建',
 }
 
+
+# Final Category Map (Merge dynamic and manual)
+# Priority: Manual > Dynamic
+STOCK_SUB_CATEGORIES = _tech_category_map.copy()
+STOCK_SUB_CATEGORIES.update(MANUAL_SUB_CATEGORIES)

@@ -539,6 +539,38 @@ def check_breakout_v2(stock_code, inst_data_map, intraday_data=None):
         if upper_shadow_info['has_upper_shadow']:
             diagnostics.append(f"📍 上引線(比率{upper_shadow_info['shadow_ratio']}x)")
 
+        # === 起漲模式判斷（新增）===
+        # 1. 判斷位階
+        if position_pct < 0.30:
+            position_level = "低檔"
+        elif position_pct >= 0.70:
+            position_level = "高檔"
+        else:
+            position_level = "中檔"
+        
+        # 2. 判斷盤整時間長度
+        if cons_days <= 14:
+            consolidation_period = "短期"
+        else:
+            consolidation_period = "長期"
+        
+        # 3. 組合起漲模式標記
+        breakout_pattern = ""
+        if position_level == "低檔" and consolidation_period == "長期":
+            breakout_pattern = "💎 低檔長期盤整起漲"
+        elif position_level == "低檔" and consolidation_period == "短期":
+            breakout_pattern = "💎 低檔短期起漲"
+        elif position_level == "高檔" and consolidation_period == "長期":
+            breakout_pattern = "⚡ 高檔長期盤整起漲"
+        elif position_level == "高檔" and consolidation_period == "短期":
+            breakout_pattern = "⚡ 高檔短期起漲"
+        else:
+            # 中檔或其他情況
+            if consolidation_period == "長期":
+                breakout_pattern = "📅 長期盤整起漲"
+            else:
+                breakout_pattern = "⚡ 短期起漲"
+
 
         return {
             "code": stock_code,
@@ -570,7 +602,11 @@ def check_breakout_v2(stock_code, inst_data_map, intraday_data=None):
             "bb_lower": safe_round(bb_lower, 2),
             "bb_width": safe_round(bb_width * 100, 2),
             "bid_vol": 0, "ask_vol": 0, "bid_ask_ratio": 1.0,
-            "is_low_base": bool(is_low_base)
+            "is_low_base": bool(is_low_base),
+            # === 起漲模式相關欄位（新增）===
+            "breakout_pattern": breakout_pattern,
+            "position_level": position_level,
+            "consolidation_period": consolidation_period
         }
     except Exception as e:
         print(f"Error checking breakout v2 {stock_code}: {e}")

@@ -137,3 +137,13 @@ async def api_high_dividend_stocks(min_yield: float = 3.0, top_n: int = 50):
     Get high dividend yield stocks.
     """
     return get_high_dividend_stocks(min_yield, top_n)
+
+@app.get("/api/momentum-stocks")
+async def api_momentum_stocks(min_days: int = 2):
+    """
+    Get consecutive rising stocks.
+    Args:
+        min_days: Minimum consecutive rising days (default 2)
+    """
+    from app.services.momentum_scanner import get_momentum_stocks
+    return get_momentum_stocks(min_days)

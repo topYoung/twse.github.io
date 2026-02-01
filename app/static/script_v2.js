@@ -885,6 +885,19 @@ function createBreakoutCard(stock) {
         return `<span style="background: ${color}15; color: ${color}; border: 1px solid ${color}44; padding: 1px 6px; border-radius: 4px; font-size: 0.75em; margin-right: 4px; display: inline-block;">${d}</span>`;
     }).join('');
 
+    // 起漲模式標記（新增）
+    const patternBadge = stock.breakout_pattern || '';
+    let patternClass = 'pattern-long'; // 預設藍色
+
+    // 根據不同模式設定 class
+    if (patternBadge.includes('低檔')) {
+        patternClass = 'pattern-low';
+    } else if (patternBadge.includes('高檔')) {
+        patternClass = 'pattern-high';
+    } else if (patternBadge.includes('長期')) {
+        patternClass = 'pattern-long';
+    }
+
     card.innerHTML = `
         <div class="card-header">
              <div class="stock-identity">
@@ -892,6 +905,10 @@ function createBreakoutCard(stock) {
                     <span class="stock-name">${stock.name}</span>
                     <span class="stock-code-small">${stock.code}</span>
                 </div>
+                <!-- 起漲模式標記（新增）-->
+                ${patternBadge ? `<div class="pattern-badge-container">
+                    <span class="pattern-badge ${patternClass}">${patternBadge}</span>
+                </div>` : ''}
                 <!-- 診斷標籤 -->
                 <div class="diagnostic-area" style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px;">
                     ${diagnosticHtml}
@@ -1263,6 +1280,7 @@ async function runComprehensiveAnalysis() {
     // API Mapping
     const apiMap = {
         'ma': '/api/stocks',
+        'momentum': '/api/momentum-stocks?min_days=2',
         'breakout': '/api/breakout-stocks',
         'rebound': '/api/rebound-stocks',
         'downtrend': '/api/downtrend-stocks',
@@ -1288,7 +1306,15 @@ async function runComprehensiveAnalysis() {
 
             // Handle different list formats
             // Layout API returns list directly or sometimes inside object? Should be list.
-            const items = Array.isArray(list) ? list : [];
+            // Breakout API returns { stocks: [...] }, so check for .stocks property
+            let items = [];
+            if (Array.isArray(list)) {
+                items = list;
+            } else if (list.stocks && Array.isArray(list.stocks)) {
+                items = list.stocks;
+            } else {
+                items = [];
+            }
 
             items.forEach(stock => {
                 // Normalize Code
@@ -1561,6 +1587,112 @@ function createMajorInvestorCard(stock) {
                 <div style="color: ${fNet > 0 ? '#ff7b72' : '#8b949e'}">外 ${fNet}</div>
                 <div style="color: ${tNet > 0 ? '#ff7b72' : '#8b949e'}">投 ${tNet}</div>
                 <div style="color: ${dNet > 0 ? '#ff7b72' : '#8b949e'}">自 ${dNet}</div>
+            </div>
+        </div>
+    `;
+    return card;
+}
+
+// --- 連漲強勢功能 (Momentum) ---
+
+function openMomentumModal() {
+    const modal = document.getElementById('momentum-modal');
+    modal.classList.remove('hidden');
+    // Fetch data immediately when opened
+    fetchMomentumStocks();
+}
+
+function closeMomentumModal() {
+    document.getElementById('momentum-modal').classList.add('hidden');
+}
+
+async function fetchMomentumStocks() {
+    const listEl = document.getElementById('momentum-list');
+    const loadingEl = document.getElementById('momentum-loading');
+
+    listEl.innerHTML = '';
+    loadingEl.classList.remove('hidden');
+    loadingEl.style.display = 'block';
+
+    try {
+        const response = await fetch('/api/momentum-stocks?min_days=2');
+        const stocks = await response.json();
+
+        loadingEl.classList.add('hidden');
+        loadingEl.style.display = 'none';
+
+        if (!stocks || stocks.length === 0) {
+            listEl.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 20px; color: #8b949e;">目前沒有符合連續上漲條件的股票</div>';
+            return;
+        }
+
+        stocks.forEach(stock => {
+            const card = createMomentumCard(stock);
+            listEl.appendChild(card);
+
+            // Add click event for chart
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('.layout-score') || e.target.closest('.badge')) return;
+                openChart(stock.code);
+            });
+        });
+
+    } catch (error) {
+        console.error('Error fetching momentum stocks:', error);
+        loadingEl.textContent = '載入失敗，請稍後重試';
+    }
+}
+
+function createMomentumCard(stock) {
+    const card = document.createElement('div');
+    card.className = 'stock-card breakout-card'; // Reuse breakout styling
+
+    // Price change styling
+    const changeClass = stock.change > 0 ? 'up' : (stock.change < 0 ? 'down' : '');
+    const changeSign = stock.change > 0 ? '+' : '';
+
+    // Tags HTML
+    const tagsHtml = (stock.tags || []).map(tag => {
+        let color = '#388bfd';
+        if (tag.includes('連漲')) color = '#ff7b72'; // Red-ish for strong trend
+        if (tag.includes('累積')) color = '#e3b341'; // Yellow for accumulation
+        if (tag.includes('法人')) color = '#a371f7'; // Purple for inst
+        return `<span style="background: ${color}15; color: ${color}; border: 1px solid ${color}44; padding: 1px 6px; border-radius: 4px; font-size: 0.75em; margin-right: 4px; display: inline-block;">${tag}</span>`;
+    }).join('');
+
+    card.innerHTML = `
+        <div class="card-header">
+             <div class="stock-identity">
+                <div class="breakout-title">
+                    <span class="stock-name">${stock.name}</span>
+                    <span class="stock-code-small">${stock.code}</span>
+                </div>
+                 <!-- Tags -->
+                <div class="diagnostic-area" style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px;">
+                    ${tagsHtml}
+                </div>
+            </div>
+        </div>
+        
+        <div class="card-body">
+            <span class="stock-price ${changeClass}">${stock.price}</span>
+            <div class="stock-change ${changeClass}">
+                ${changeSign}${stock.change} (${changeSign}${stock.change_percent}%)
+            </div>
+        </div>
+        
+        <div class="breakout-metrics" style="margin-top: 12px; border-top: 1px solid #30363d; padding-top: 8px;">
+             <div class="breakout-metric">
+                <span class="metric-label">連漲天數</span>
+                <span class="metric-value" style="color: #ff7b72; font-weight: bold;">${stock.consecutive_days} 天</span>
+            </div>
+            <div class="breakout-metric">
+                <span class="metric-label">波段漲幅</span>
+                <span class="metric-value" style="color: #e3b341;">${stock.total_increase_pct}%</span>
+            </div>
+             <div class="breakout-metric">
+                <span class="metric-label">成交量</span>
+                <span class="metric-value">${Math.floor(stock.volume / 1000).toLocaleString()} 張</span>
             </div>
         </div>
     `;

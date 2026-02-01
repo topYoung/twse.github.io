@@ -1018,3 +1018,34 @@ button:hover {
         grid-template-columns: 1fr;
     }
 }
+
+/* === 起漲模式標記 (Breakout Pattern) === */
+.pattern-badge-container {
+    margin-top: 6px;
+}
+
+.pattern-badge {
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 0.85em;
+    font-weight: 600;
+    display: inline-block;
+}
+
+.pattern-low {
+    background: rgba(241, 196, 15, 0.15);
+    color: #f1c40f;
+    border: 1px solid rgba(241, 196, 15, 0.44);
+}
+
+.pattern-high {
+    background: rgba(218, 54, 51, 0.15);
+    color: #da3633;
+    border: 1px solid rgba(218, 54, 51, 0.44);
+}
+
+.pattern-long {
+    background: rgba(56, 139, 253, 0.15);
+    color: #388bfd;
+    border: 1px solid rgba(56, 139, 253, 0.44);
+}

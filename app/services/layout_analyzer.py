@@ -9,7 +9,13 @@ import statistics
 from .institutional_data import fetch_historical_data, INVESTOR_NAMES
 from .categories import STOCK_SUB_CATEGORIES
 import twstock
+import threading
+import time
 
+# Global Cache for Layout Results
+_layout_cache = {}
+_layout_cache_lock = threading.Lock()
+_CACHE_DURATION = 3600  # 1 hour (since institutional data is daily)
 
 def analyze_stock_pattern(stock_code: str, historical_data: Dict[str, List[Dict]]) -> Dict:
     """
@@ -166,9 +172,18 @@ def get_layout_stocks(investor_type: str, days: int = 90, min_score: float = 30.
         min_score: 最低評分門檻
         top_n: 回傳前N檔股票
     
-    Returns:
-        股票清單，依評分排序
     """
+    # Check Cache
+    cache_key = f"layout_{investor_type}_{days}_{min_score}_{top_n}"
+    current_time = time.time()
+    
+    with _layout_cache_lock:
+        if cache_key in _layout_cache:
+            timestamp, data = _layout_cache[cache_key]
+            if current_time - timestamp < _CACHE_DURATION:
+                print(f"Using cached layout results for {investor_type} (Age: {int(current_time - timestamp)}s)")
+                return data
+
     # 獲取歷史資料
     historical_data = fetch_historical_data(investor_type, days)
     
@@ -216,8 +231,13 @@ def get_layout_stocks(investor_type: str, days: int = 90, min_score: float = 30.
     
     print(f"找到 {len(results)} 檔評分 >= {min_score} 的股票")
     
-    # 回傳前N檔
-    return results[:top_n]
+    final_results = results[:top_n]
+    
+    # Update Cache
+    with _layout_cache_lock:
+        _layout_cache[cache_key] = (current_time, final_results)
+        
+    return final_results
 
 
 def get_stock_layout_detail(stock_code: str, investor_type: str, days: int = 90) -> Dict:
@@ -304,6 +324,17 @@ def get_multi_investor_layout(mode: str = 'all-3', days: int = 90, min_score: fl
     Args:
         mode: 'all-3' (三法人同買) 或 'any-2' (任二法人同買)
     """
+    # Check Cache
+    cache_key = f"multi_layout_{mode}_{days}_{min_score}_{top_n}"
+    current_time = time.time()
+    
+    with _layout_cache_lock:
+        if cache_key in _layout_cache:
+            timestamp, data = _layout_cache[cache_key]
+            if current_time - timestamp < _CACHE_DURATION:
+                print(f"Using cached multi-investor results for {mode} (Age: {int(current_time - timestamp)}s)")
+                return data
+
     investors = ['foreign', 'trust', 'dealer']
     layout_results = {}
     
@@ -366,7 +397,13 @@ def get_multi_investor_layout(mode: str = 'all-3', days: int = 90, min_score: fl
     # 3. 排序 (依據參與法人數、總分)
     final_results.sort(key=lambda x: (x['investor_count'], x['combined_score']), reverse=True)
     
-    return final_results[:top_n]
+    output = final_results[:top_n]
+    
+    # Update Cache
+    with _layout_cache_lock:
+        _layout_cache[cache_key] = (current_time, output)
+        
+    return output
 
 
 def get_major_investors_layout(days: int = 3, top_n: int = 50) -> List[Dict]:
@@ -380,6 +417,16 @@ def get_major_investors_layout(days: int = 3, top_n: int = 50) -> List[Dict]:
     Returns:
         股票清單，依合計買超張數排序
     """
+    # Check Cache
+    cache_key = f"major_layout_{days}_{top_n}"
+    current_time = time.time()
+    
+    with _layout_cache_lock:
+        if cache_key in _layout_cache:
+            timestamp, data = _layout_cache[cache_key]
+            if current_time - timestamp < _CACHE_DURATION:
+                print(f"Using cached major investors results (Age: {int(current_time - timestamp)}s)")
+                return data
 
     try:
         investors = ['foreign', 'trust', 'dealer']
@@ -469,7 +516,13 @@ def get_major_investors_layout(days: int = 3, top_n: int = 50) -> List[Dict]:
                 'days_analyzed': days
             }]
 
-        return results[:top_n]
+        output = results[:top_n]
+        
+        # Update Cache
+        with _layout_cache_lock:
+            _layout_cache[cache_key] = (current_time, output)
+            
+        return output
         
     except Exception as e:
         print(f"Error in get_major_investors_layout: {e}")
