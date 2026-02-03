@@ -131,18 +131,18 @@ def classify_volume_signal(today_vol, avg_vol):
         return '➡️ 量能持平'
 
 
-def detect_upper_shadow_after_decline(hist, decline_days=3, shadow_ratio=1.5):
+def detect_lower_shadow_after_decline(hist, decline_days=3, shadow_ratio=1.5):
     """
-    偵測多日下跌後出現上引線（準備反彈訊號）
+    偵測多日下跌後出現下引線（錘頭線/反彈訊號）
     
     Args:
         hist: 歷史資料 DataFrame
         decline_days: 檢查連續下跌天數（預設 3 天）
-        shadow_ratio: 上影線/實體比率門檻（預設 1.5 倍）
+        shadow_ratio: 下影線/實體比率門檻（預設 1.5 倍）
     
     Returns:
         dict: {
-            'has_upper_shadow': bool,
+            'has_lower_shadow': bool,
             'decline_count': int,
             'shadow_length': float,
             'body_length': float,
@@ -151,7 +151,7 @@ def detect_upper_shadow_after_decline(hist, decline_days=3, shadow_ratio=1.5):
     """
     if len(hist) < decline_days + 1:
         return {
-            'has_upper_shadow': 0,  # 使用 int (0/1) 確保 JSON 序列化
+            'has_lower_shadow': 0,
             'decline_count': 0,
             'shadow_length': 0.0,
             'body_length': 0.0,
@@ -159,38 +159,85 @@ def detect_upper_shadow_after_decline(hist, decline_days=3, shadow_ratio=1.5):
         }
     
     # 檢查前 N 天是否連續下跌
-    recent_prices = hist['Close'].tail(decline_days + 1)
+    # 邏輯：今天(iloc[-1])之前的幾天都是下跌趨勢
+    # 改進：不包含今天(Today)的漲跌，因為今天是反轉日(可能收紅)，我們只看「過去」是否連跌
+    # 我們需要 decline_days 個跌幅，所以需要前 decline_days + 1 天的資料 (比較用)
+    
+    # 確保有足夠資料：今日 + 前(N+1)天 -> 總共 N+2 天
+    needed_days = decline_days + 2
+    if len(hist) < needed_days:
+        return {
+            'has_lower_shadow': 0,
+            'decline_count': 0,
+            'check_days': decline_days,
+            'shadow_length': 0.0,
+            'body_length': 0.0,
+            'shadow_ratio': 0.0
+        }
+
+    # 取出 "不包含今天" 的最後 (decline_days + 1) 天 Close
+    prices_prior = hist['Close'].iloc[-(decline_days + 2) : -1]
+
     decline_count = 0
-    for i in range(len(recent_prices) - 1):
-        if recent_prices.iloc[i] > recent_prices.iloc[i + 1]:
+    # 從最後一天往前比對
+    # prices_prior 索引：0 .. M
+    # Loop i from M down to 1
+    for i in range(len(prices_prior) - 1, 0, -1):
+        curr = prices_prior.iloc[i]
+        prev = prices_prior.iloc[i-1]
+        
+        if curr < prev:
             decline_count += 1
         else:
-            break  # 不連續就中斷
-    
-    # 檢查最後一根 K 棒是否有上引線
+            break 
+            
+    # 額外確認：今天的 Low 最好是近幾日新低，增強「探底」意義 (Optional)
+    # prev_lows = hist['Low'].iloc[-(decline_days + 2) : -1].min()
+    # today_low = hist.iloc[-1]['Low']
+    # is_new_low = today_low < prev_lows
+            
+    # 檢查最後一根 K 棒是否有下引線
     today = hist.iloc[-1]
     high = today['High']
+    low = today['Low']
     close = today['Close']
     open_price = today['Open']
     
-    # 計算上影線長度
-    shadow_length = high - max(close, open_price)
+    body_top = max(close, open_price)
+    body_bottom = min(close, open_price)
+    
+    # 計算下影線長度 (實體底部 - 最低價)
+    lower_shadow_length = body_bottom - low
+    
+    # 計算上影線長度 (最高價 - 實體頂部)
+    upper_shadow_length = high - body_top
     
     # 計算實體長度
-    body_length = abs(close - open_price)
+    body_length = body_top - body_bottom
     
     # 計算比率（避免除以零）
-    shadow_ratio_value = shadow_length / body_length if body_length > 0 else 0
+    # 如果實體極小（十字線），我們給予較高的比率權重，但要確保有足夠長度
+    if body_length > 0:
+        shadow_ratio_value = lower_shadow_length / body_length
+    else:
+        # 實體為 0，如果下引線有長度，則視為無限大
+        shadow_ratio_value = 999.0 if lower_shadow_length > 0 else 0
     
-    has_upper_shadow = (
+    # 判斷條件：
+    # 1. 之前有下跌趨勢
+    # 2. 下影線夠長 (相對實體)
+    # 3. 下影線明顯長於上影線 (至少 2 倍，確保不是十字變盤線或長腳十字，而是偏多解讀的垂頭)
+    has_lower_shadow = (
         decline_count >= decline_days and
-        shadow_ratio_value >= shadow_ratio
+        shadow_ratio_value >= shadow_ratio and
+        lower_shadow_length > (upper_shadow_length * 1.5)
     )
     
     return {
-        'has_upper_shadow': int(has_upper_shadow),  # 轉換為 int (0/1) 確保 JSON 序列化
+        'has_lower_shadow': int(has_lower_shadow),
         'decline_count': int(decline_count),
-        'shadow_length': round(float(shadow_length), 2),
+        'check_days': decline_days,
+        'shadow_length': round(float(lower_shadow_length), 2),
         'body_length': round(float(body_length), 2),
         'shadow_ratio': round(float(shadow_ratio_value), 2)
     }
@@ -436,8 +483,8 @@ def check_breakout_v2(stock_code, inst_data_map, intraday_data=None):
         # 量能訊號分類
         volume_signal = classify_volume_signal(today_vol, avg_vol_period)
         
-        # 上引線偵測（多日下跌後的反彈訊號）
-        upper_shadow_info = detect_upper_shadow_after_decline(hist, decline_days=3, shadow_ratio=1.5)
+        # 下引線偵測（多日下跌後的反彈訊號 - 改為 lower shadow）
+        lower_shadow_info = detect_lower_shadow_after_decline(hist, decline_days=3, shadow_ratio=1.5)
 
         # Low Base Check (Added)
         recent_60 = hist['Close'].iloc[-60:]
@@ -470,10 +517,10 @@ def check_breakout_v2(stock_code, inst_data_map, intraday_data=None):
         elif vol_ratio >= 1.8 and change_percent > 0:
             is_valid = True
             reason = "帶量上漲"
-        # 策略 5: 多日下跌後上引線（新增）
-        elif upper_shadow_info['has_upper_shadow']:
+        # 策略 5: 多日下跌後下引線（錘頭線）
+        elif lower_shadow_info['has_lower_shadow']:
             is_valid = True
-            reason = f"📍 下跌後上引線({upper_shadow_info['decline_count']}日)"
+            reason = f"🔨 下跌後錘頭線"
         # 策略 6: 突破盤整區但量能不足（放寬條件）
         elif price_break and change_percent > 0:
             is_valid = True
@@ -535,9 +582,9 @@ def check_breakout_v2(stock_code, inst_data_map, intraday_data=None):
         if vol_trend['is_healthy']:
             diagnostics.append("📈 健康放量")
         
-        # 4. 上引線特徵
-        if upper_shadow_info['has_upper_shadow']:
-            diagnostics.append(f"📍 上引線(比率{upper_shadow_info['shadow_ratio']}x)")
+        # 4. 下引線特徵
+        if lower_shadow_info['has_lower_shadow']:
+            diagnostics.append(f"🔨 下引線(比率{lower_shadow_info['shadow_ratio']}x)")
 
         # === 起漲模式判斷（新增）===
         # 1. 判斷位階
@@ -589,7 +636,7 @@ def check_breakout_v2(stock_code, inst_data_map, intraday_data=None):
             "amplitude": safe_round(best_amplitude * 100, 1) or 0.0,
             "box_threshold_used": safe_round(box_threshold * 100, 1),
             "position_pct": safe_round(position_pct * 100, 1) or 0.0,
-            "upper_shadow": upper_shadow_info,  # 新增：上引線資訊
+            "lower_shadow": lower_shadow_info,  # 新增：下引線資訊
             "kd_k": safe_round(k, 1),
             "kd_d": safe_round(d, 1),
             "rsi": safe_round(rsi, 1),
