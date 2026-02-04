@@ -62,6 +62,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (event.target === highDividendModal) {
             closeHighDividendModal();
         }
+
+        const divergenceModal = document.getElementById('divergence-modal');
+        if (event.target === divergenceModal) {
+            closeDivergenceModal();
+        }
     });
 
     // Check for specific buttons if they exist (legacy support)
@@ -1287,7 +1292,8 @@ async function runComprehensiveAnalysis() {
         'investor3': '/api/layout-stocks/intersection/all-3?days=90&min_score=30&top_n=200',
         'major3': '/api/layout-stocks/major?days=3&top_n=200',
         'investor2': '/api/layout-stocks/intersection/any-2?days=90&min_score=30&top_n=200',
-        'dividend': '/api/high-dividend-stocks?min_yield=3.0&top_n=200'
+        'dividend': '/api/high-dividend-stocks?min_yield=3.0&top_n=200',
+        'divergence': '/api/divergence-stocks?days=5&min_net_buy=100&max_price_change=1.0'
     };
 
     // Disable button
@@ -1321,6 +1327,8 @@ async function runComprehensiveAnalysis() {
                 items = list;
             } else if (list.stocks && Array.isArray(list.stocks)) {
                 items = list.stocks;
+            } else if (list.data && Array.isArray(list.data)) {
+                items = list.data;
             } else {
                 items = [];
             }
@@ -1709,6 +1717,109 @@ function createMomentumCard(stock) {
              <div class="breakout-metric">
                 <span class="metric-label">成交量</span>
                 <span class="metric-value">${Math.floor(stock.volume / 1000).toLocaleString()} 張</span>
+            </div>
+        </div>
+    `;
+    return card;
+}
+
+// --- 法人接刀 (Divergence Scanner) ---
+
+async function openDivergenceModal() {
+    const modal = document.getElementById('divergence-modal');
+    const loading = document.getElementById('divergence-loading');
+    const container = document.getElementById('divergence-list');
+    const shadowCheckbox = document.getElementById('divergence-shadow-only');
+
+    // Get checkbox state (default false if element missing)
+    const requireShadow = shadowCheckbox ? shadowCheckbox.checked : false;
+
+    modal.classList.remove('hidden');
+    loading.classList.remove('hidden');
+    container.innerHTML = '';
+
+    try {
+        // Default: 5 days, min 100 sheets (100000 shares), allow 1.0% change (default flat/small rise)
+        // Pass shadow param
+        const response = await fetch(`/api/divergence-stocks?days=5&min_net_buy=100&max_price_change=1.0&require_lower_shadow=${requireShadow}`);
+        const result = await response.json();
+
+        loading.classList.add('hidden');
+
+        if (result.status === 'error') {
+            container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #f85149;">掃描失敗: ${result.message}</div>`;
+            return;
+        }
+
+        const stocks = result.data || [];
+
+        if (stocks.length === 0) {
+            container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #8b949e;">目前沒有發現法人接刀的股票 (淨買超 > 100張 且 股價下跌)</div>';
+            return;
+        }
+
+        stocks.forEach(stock => {
+            const card = createDivergenceCard(stock);
+            container.appendChild(card);
+        });
+
+    } catch (error) {
+        console.error('Error fetching divergence stocks:', error);
+        loading.classList.add('hidden');
+        container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #f85149;">掃描失敗，請稍後重試</div>`;
+    }
+}
+
+function closeDivergenceModal() {
+    document.getElementById('divergence-modal').classList.add('hidden');
+}
+
+function createDivergenceCard(stock) {
+    const card = document.createElement('div');
+    card.className = 'stock-card divergence-card'; // Reuse styles or add specific ones
+    card.onclick = () => openChart(stock.code, stock.name, stock.category || '法人接刀');
+
+    // Format numbers
+    const netBuySheets = (stock.total_net / 1000).toFixed(0);
+    const priceChange = stock.price_change_pct; // e.g. -2.5
+
+    // Determine main investor (who bought the most)
+    let mainInvestor = '';
+    let maxBuy = -99999999;
+    const details = stock.details;
+    if (details.foreign > maxBuy) { maxBuy = details.foreign; mainInvestor = '外資'; }
+    if (details.trust > maxBuy) { maxBuy = details.trust; mainInvestor = '投信'; }
+    if (details.dealer > maxBuy) { maxBuy = details.dealer; mainInvestor = '自營'; }
+
+    // Icon mapping
+    const icons = { '外資': '🌍', '投信': '🏦', '自營': '🏢' };
+    const icon = icons[mainInvestor] || '🦈';
+
+    card.innerHTML = `
+        <div class="card-header">
+            <div class="stock-identity">
+                <span class="stock-name">${stock.name}</span>
+                <span class="stock-code-small">${stock.code}</span>
+            </div>
+            <span class="badge ${stock.category === '其他' ? 'trad' : 'tech'}">${stock.category}</span>
+        </div>
+        <div class="card-body">
+            <div class="price-info">
+                   <div class="stock-price">${stock.price}</div>
+                   <div class="stock-change down" style="font-size: 0.9em;">
+                        ${priceChange}% (5日)
+                   </div>
+            </div>
+            
+            <div style="margin-top: 10px; border-top: 1px solid #30363d; padding-top: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <span style="color: #8b949e; font-size: 0.9em;">主力淨買</span>
+                    <span class="up" style="font-weight: bold;">+${netBuySheets}張</span>
+                </div>
+                 <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: #8b949e; font-size: 0.9em;">主要買盤</span>
+                    <span style="color: #c9d1d9; font-size: 0.9em;">${icon} ${mainInvestor}</span>
+                </div>
             </div>
         </div>
     `;

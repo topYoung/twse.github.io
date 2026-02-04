@@ -98,6 +98,11 @@
                             style="border: 1px solid #f85149; color: #f85149;">
                             <span class="icon">💰</span> 高股息
                         </button>
+                        <!-- Divergence Button -->
+                        <button class="investor-btn" onclick="openDivergenceModal()"
+                            style="border: 1px solid #a371f7; color: #a371f7;">
+                            <span class="icon">📉</span> 法人接刀
+                        </button>
                         <!-- 我的監控按鈕 -->
                         <button class="investor-btn" onclick="openWatchlistModal()"
                             style="border: 1px solid #ffa657; color: #ffa657;">
@@ -150,6 +155,9 @@
             </label>
             <label class="checkbox-label">
                 <input type="checkbox" name="strategy" value="dividend"> 高股息
+            </label>
+            <label class="checkbox-label">
+                <input type="checkbox" name="strategy" value="divergence"> 法人接刀
             </label>
         </div>
     </div>
@@ -322,6 +330,30 @@
             </div>
             <div id="momentum-loading" class="loading-spinner hidden">正在掃描連漲股票...</div>
             <div id="momentum-list" class="stock-grid">
+                <!-- 列表將在這裡產生 -->
+            </div>
+        </div>
+        <div id="momentum-list" class="stock-grid">
+            <!-- 列表將在這裡產生 -->
+        </div>
+    </div>
+    </div>
+
+    <!-- 法人接刀 Modal -->
+    <div id="divergence-modal" class="modal hidden">
+        <div class="modal-content investor-modal-content" style="max-width: 1000px;">
+            <div class="modal-header">
+                <h2>📉 法人接刀 (法人買 + 股價跌)</h2>
+                <div style="display: flex; gap: 15px; align-items: center;">
+                    <label class="checkbox-label" style="font-size: 0.9em; color: #8b949e;">
+                        <input type="checkbox" id="divergence-shadow-only" onchange="openDivergenceModal()"> 只顯示長下影線
+                        (賣壓減緩)
+                    </label>
+                    <button class="close-modal-btn" onclick="closeDivergenceModal()">✕</button>
+                </div>
+            </div>
+            <div id="divergence-loading" class="loading-spinner hidden">正在掃描背離股...</div>
+            <div id="divergence-list" class="stock-grid">
                 <!-- 列表將在這裡產生 -->
             </div>
         </div>

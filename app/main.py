@@ -131,6 +131,19 @@ async def api_layout_intersection(mode: str, days: int = 90, min_score: float = 
         
     return get_multi_investor_layout(mode, days, min_score, top_n)
 
+@app.get("/api/divergence-stocks")
+async def api_divergence_stocks(days: int = 5, min_net_buy: int = 100, max_price_change: float = 1.0, require_lower_shadow: bool = False):
+    """
+    法人買超但股價下跌掃描 (Divergence Scanner)
+    """
+    try:
+        from app.services.divergence_scanner import get_divergence_stocks
+        results = get_divergence_stocks(days, min_net_buy, max_price_change, require_lower_shadow)
+        return {"status": "success", "data": results}
+    except Exception as e:
+        print(f"Error in divergence scanner: {e}")
+        return {"status": "error", "message": str(e)}
+
 @app.get("/api/high-dividend-stocks")
 async def api_high_dividend_stocks(min_yield: float = 3.0, top_n: int = 50):
     """
