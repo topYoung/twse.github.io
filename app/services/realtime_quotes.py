@@ -250,3 +250,145 @@ def get_batch_intraday_candles(stock_codes: List[str]) -> Dict[str, Optional[Dic
             results[code] = None
     
     return results
+
+
+def get_realtime_quote(stock_code: str) -> Optional[Dict]:
+    """
+    獲取單一股票完整即時資訊 (包含價量與買賣力道)
+    修復 get_stocks_realtime 使用的函式
+    """
+    try:
+        ex_ch = f"tse_{stock_code}.tw|otc_{stock_code}.tw"
+        ts = int(time.time() * 1000)
+        url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch={ex_ch}&json=1&delay=0&_{ts}"
+        
+        context = ssl._create_unverified_context()
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, context=context, timeout=5) as response:
+            data = response.read().decode('utf-8')
+            json_data = json.loads(data)
+            
+            if 'msgArray' not in json_data or len(json_data['msgArray']) == 0:
+                return None
+            
+            info = json_data['msgArray'][0]
+            
+            # Helper functions
+            def safe_float(v, default=0.0):
+                if not v or v == '-': return default
+                try: return float(v)
+                except: return default
+            
+            def safe_int(v, default=0):
+                if not v or v == '-': return default
+                try: return int(v)
+                except: return default
+                
+            def sum_volumes(vol_str):
+                if not vol_str or vol_str == '-': return 0
+                try:
+                    return sum(int(v) for v in vol_str.split('_') if v and v != '-')
+                except:
+                    return 0
+
+            yesterday_close = safe_float(info.get('y'))
+            current_price = safe_float(info.get('z'), yesterday_close)
+            open_price = safe_float(info.get('o'), yesterday_close)
+            high_price = safe_float(info.get('h'), current_price)
+            low_price = safe_float(info.get('l'), current_price)
+            volume = safe_int(info.get('v'))
+            
+            change = current_price - yesterday_close
+            change_percent = (change / yesterday_close * 100) if yesterday_close > 0 else 0.0
+            
+            # Bid/Ask
+            bid_vol = sum_volumes(info.get('g', '0'))
+            ask_vol = sum_volumes(info.get('f', '0'))
+            bid_ask_ratio = round(bid_vol / ask_vol, 2) if ask_vol > 0 else (bid_vol if bid_vol > 0 else 1.0)
+            
+            return {
+                'open': open_price,
+                'high': high_price,
+                'low': low_price,
+                'close': current_price,
+                'price': current_price,
+                'volume': volume, 
+                'change': round(change, 2),
+                'change_percent': round(change_percent, 2),
+                'bid_ask_ratio': bid_ask_ratio
+            }
+            
+    except Exception as e:
+        print(f"Error fetching realtime quote for {stock_code}: {e}")
+        return None
+
+
+def get_realtime_prices_batch(stock_codes: List[str]) -> Dict[str, Dict]:
+    """
+    批次獲取僅含價格與漲幅的資訊 (高效率，用於掃描器)
+    使用較大的 chunk size
+    """
+    if not stock_codes:
+        return {}
+        
+    results = {}
+    chunk_size = 25 # Slightly conservative
+    import time
+    
+    for i in range(0, len(stock_codes), chunk_size):
+        chunk = stock_codes[i:i + chunk_size]
+        # time.sleep(0.5) # Minimal delay if strict
+        
+        ex_ch_list = [f"tse_{c}.tw|otc_{c}.tw" for c in chunk]
+        ex_ch = "|".join(ex_ch_list)
+        ts = int(time.time() * 1000)
+        url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch={ex_ch}&json=1&delay=0&_{ts}"
+        
+        try:
+            context = ssl._create_unverified_context()
+            headers = {"User-Agent": "Mozilla/5.0"}
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, context=context, timeout=8) as response:
+                data = response.read().decode('utf-8')
+                json_data = json.loads(data)
+                
+                if 'msgArray' in json_data:
+                    for info in json_data['msgArray']:
+                        code = info.get('c')
+                        if not code: continue
+                        
+                        try:
+                            # Parse safely
+                            def safe_float(v, default=0.0):
+                                if not v or v == '-': return default
+                                try: return float(v)
+                                except: return default
+                            
+                            y = safe_float(info.get('y', 0))
+                            z = info.get('z', '-')
+                            if z == '-': z = y
+                            else: z = safe_float(z, y)
+                            
+                            pool_name = info.get('n', code)
+                            
+                            change_pct = 0.0
+                            if y > 0:
+                                change_pct = ((z - y) / y) * 100
+                                
+                            results[code] = {
+                                'code': code,
+                                'price': z,
+                                'change_percent': round(change_pct, 2),
+                                'name': pool_name
+                            }
+                        except:
+                            continue
+        except Exception as e:
+            print(f"Error partial batch: {e}")
+            continue
+            
+    return results

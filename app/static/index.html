@@ -116,7 +116,7 @@
                 <span>🔍 綜合篩選 (多策略交集)</span>
                 <span id="analysis-toggle-icon" style="font-size: 0.8em; color: #8b949e;">▼</span>
             </h3>
-            <button class="investor-btn" onclick="event.stopPropagation(); runComprehensiveAnalysis()"
+            <button id="analysis-btn" class="investor-btn" onclick="event.stopPropagation(); runComprehensiveAnalysis()"
                 style="padding: 4px 12px; font-size: 0.9em; background: #1f6feb; border: none; color: white;">
                 開始分析
             </button>
@@ -141,6 +141,9 @@
             </label>
             <label class="checkbox-label">
                 <input type="checkbox" name="strategy" value="investor3"> 3大法人同買
+            </label>
+            <label class="checkbox-label">
+                <input type="checkbox" name="strategy" value="major3"> 主力近3日
             </label>
             <label class="checkbox-label">
                 <input type="checkbox" name="strategy" value="investor2"> 2法人同買

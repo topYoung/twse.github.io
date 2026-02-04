@@ -1009,7 +1009,7 @@ function createReboundCard(stock) {
             </div>
             <span class="badge" style="background: #d29922; color: white;">低檔轉強</span>
         </div>
-        <div class="card-body">
+            <div class="card-body">
             <div class="price-info">
                  <div class="stock-price">${stock.price}</div>
                  <div class="stock-change up">
@@ -1285,9 +1285,18 @@ async function runComprehensiveAnalysis() {
         'rebound': '/api/rebound-stocks',
         'downtrend': '/api/downtrend-stocks',
         'investor3': '/api/layout-stocks/intersection/all-3?days=90&min_score=30&top_n=200',
+        'major3': '/api/layout-stocks/major?days=3&top_n=200',
         'investor2': '/api/layout-stocks/intersection/any-2?days=90&min_score=30&top_n=200',
         'dividend': '/api/high-dividend-stocks?min_yield=3.0&top_n=200'
     };
+
+    // Disable button
+    const btn = document.getElementById('analysis-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.textContent = '分析中...';
+    }
 
     try {
         // Fetch All
@@ -1353,7 +1362,14 @@ async function runComprehensiveAnalysis() {
 
     } catch (error) {
         console.error('Analysis error:', error);
-        loadingMsg.textContent = '分析失敗，請重試。';
+        loadingMsg.textContent = '分析失敗，請檢查網路連線或稍後重試。';
+    } finally {
+        // Re-enable button
+        if (btn) {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.textContent = '開始分析';
+        }
     }
 }
 
