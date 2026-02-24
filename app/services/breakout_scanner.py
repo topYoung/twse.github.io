@@ -477,6 +477,12 @@ def check_breakout_v2(stock_code, inst_data_map, intraday_data=None):
         avg_vol_period = float(hist.iloc[-(cons_days+1):-1]["Volume"].mean())
         vol_ratio = today_vol / (avg_vol_period + 1)
         
+        # === 基本流動性過濾（新增：排除量太少的殭屍股假突破）===
+        # 條件 1：今日成交量必須大於 50 萬股（500 張），確保突破具有實質資金參與
+        # 條件 2：盤整期間的日均量大於 10 萬股（100 張），避免平時完全無交易的冷門股
+        if today_vol < 500000 or avg_vol_period < 100000:
+            return None
+        
         # 量能趨勢分析
         vol_trend = analyze_volume_trend(hist, days=5)
         
