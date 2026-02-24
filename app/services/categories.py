@@ -20,13 +20,17 @@ TECH_SECTOR_NAMES = [
     '電子零組件業', '電子通路業', '資訊服務業', '其他電子業'
 ]
 
+DELISTED_STOCKS = [
+    '3698', '4945', '5383', '6457', '3202', '2311', '6514', '6404'
+]
+
 def get_all_tech_stocks():
     stocks = []
     # Dynamic Map for fallback categories
     dynamic_map = {}
     
     for code, info in twstock.codes.items():
-        if info.type == '股票':
+        if info.type == '股票' and code not in DELISTED_STOCKS:
             # Check if in tech sectors
             if info.group in TECH_SECTOR_NAMES:
                 # Add suffix for yfinance
@@ -67,7 +71,7 @@ MANUAL_SUB_CATEGORIES = {
     
     # IC設計 (IC Design)
     '2454': 'IC設計', '3443': 'IC設計', '3034': 'IC設計', '2379': 'IC設計', '3661': 'IC設計',
-    '3035': 'IC設計', '6415': 'IC設計', '3698': 'IC設計', '6285': 'IC設計', '3529': 'IC設計',
+    '3035': 'IC設計', '6415': 'IC設計', '6285': 'IC設計', '3529': 'IC設計',
     '6488': 'IC設計', '3169': 'IC設計', '4966': 'IC設計', '6271': 'IC設計',
     
     # IC通路 (IC Distributor)
@@ -75,7 +79,7 @@ MANUAL_SUB_CATEGORIES = {
     '3048': 'IC通路', '3055': 'IC通路',
     
     # 封測 (Package & Test)
-    '2311': '封測', '3711': '封測', '2369': '封測', '3450': '封測', '3481': '封測',
+    '3711': '封測', '2369': '封測', '3450': '封測', '3481': '封測',
     
     # 半導體設備/材料 (Equipment)
     '3707': '半導體設備', '5274': '半導體設備', '3227': '半導體設備', '4979': '半導體設備',

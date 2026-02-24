@@ -2,8 +2,12 @@ import yfinance as yf
 import pandas as pd
 from typing import List, Dict
 from concurrent.futures import ThreadPoolExecutor
-from .categories import TECH_STOCKS, TRAD_STOCKS, STOCK_SUB_CATEGORIES
+from .categories import TECH_STOCKS, TRAD_STOCKS, STOCK_SUB_CATEGORIES, DELISTED_STOCKS
 import twstock
+import logging
+
+# 抑制 yfinance 找不到資料時出現的 "possibly delisted" 錯誤訊息，維持後端 log 乾淨
+logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 import urllib.request
 import json
 import ssl
@@ -210,6 +214,7 @@ def get_filtered_stocks():
     # Merge lists
     keys_from_map = list(STOCK_SUB_CATEGORIES.keys())
     all_stocks = list(set(TECH_STOCKS + TRAD_STOCKS + keys_from_map))
+    all_stocks = [s for s in all_stocks if s not in DELISTED_STOCKS]
     
     # Increase workers to speed up fetching
     with ThreadPoolExecutor(max_workers=50) as executor:
@@ -408,13 +413,14 @@ def search_stock_code(query: str, limit: int = 10) -> List[Dict]:
         return results
     
     # 1. Exact Code Match (highest priority)
-    if query in twstock.codes:
+    if query in twstock.codes and query not in DELISTED_STOCKS:
         info = twstock.codes[query]
         results.append({"code": info.code, "name": info.name})
         return results
     
     # 2. Exact Name Match
     for code, info in twstock.codes.items():
+        if code in DELISTED_STOCKS: continue
         if info.name == query:
             results.append({"code": info.code, "name": info.name})
             if len(results) >= limit:
@@ -425,6 +431,7 @@ def search_stock_code(query: str, limit: int = 10) -> List[Dict]:
     
     # 3. Partial Code Match (code starts with query)
     for code, info in twstock.codes.items():
+        if code in DELISTED_STOCKS: continue
         if code.startswith(query):
             results.append({"code": info.code, "name": info.name})
             if len(results) >= limit:
@@ -433,6 +440,7 @@ def search_stock_code(query: str, limit: int = 10) -> List[Dict]:
     # 4. Partial Name Match (name contains query)
     if len(results) < limit:
         for code, info in twstock.codes.items():
+            if code in DELISTED_STOCKS: continue
             if query in info.name:
                 # Avoid duplicates
                 if not any(r['code'] == code for r in results):
