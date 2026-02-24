@@ -67,6 +67,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (event.target === divergenceModal) {
             closeDivergenceModal();
         }
+
+        const intradayModal = document.getElementById('intraday-modal');
+        if (event.target === intradayModal) {
+            closeIntradayModal();
+        }
     });
 
     // Check for specific buttons if they exist (legacy support)
@@ -238,8 +243,13 @@ async function openChart(stockCode, stockName, category) {
     // Force resize calculation after modal is shown to ensure chart renders
     const resizeChart = () => {
         if (chart && chartContainer) {
-            chart.resize(chartContainer.clientWidth, chartContainer.clientHeight);
-            chart.timeScale().fitContent();
+            const width = chartContainer.clientWidth;
+            const height = chartContainer.clientHeight;
+            console.log(`[Chart Resize] New dimensions: ${width}x${height}`);
+            if (width > 0 && height > 0) {
+                chart.resize(width, height);
+                chart.timeScale().fitContent();
+            }
         }
     };
 
@@ -247,6 +257,7 @@ async function openChart(stockCode, stockName, category) {
     setTimeout(resizeChart, 50);
     setTimeout(resizeChart, 200);
     setTimeout(resizeChart, 500);
+    setTimeout(resizeChart, 1000); // Extra safety for slow transitions
 
     // Reset to "Day" view by default
     currentInterval = '1d';
@@ -499,13 +510,19 @@ if (searchBtn && searchInput) {
             const response = await fetch(`/api/search?query=${encodeURIComponent(query)}`);
             const result = await response.json();
 
-            if (result.error || !result.code) {
+            if (result.error || !Array.isArray(result) || result.length === 0) {
                 alert(`找不到股票: ${query}`);
                 return;
             }
 
-            // 2. Open Chart with resolved Code
-            openChart(result.code, result.name, '搜尋');
+            // 2. Open Chart with resolved Code (take the first result)
+            const firstResult = result[0];
+            const stockCode = firstResult.code;
+            const stockName = firstResult.name;
+            const category = firstResult.category || '搜尋';
+
+            console.log(`[Search] Opening chart for: ${stockCode} (${stockName})`);
+            openChart(stockCode, stockName, category);
             searchInput.value = '';
 
         } catch (error) {
@@ -1293,7 +1310,8 @@ async function runComprehensiveAnalysis() {
         'major3': '/api/layout-stocks/major?days=3&top_n=200',
         'investor2': '/api/layout-stocks/intersection/any-2?days=90&min_score=30&top_n=200',
         'dividend': '/api/high-dividend-stocks?min_yield=3.0&top_n=200',
-        'divergence': '/api/divergence-stocks?days=5&min_net_buy=100&max_price_change=1.0'
+        'divergence': '/api/divergence-stocks?days=5&min_net_buy=100&max_price_change=1.0',
+        'intraday': '/api/intraday-stocks'
     };
 
     // Disable button
@@ -1823,5 +1841,396 @@ function createDivergenceCard(stock) {
             </div>
         </div>
     `;
+    return card;
+}
+
+// --- Pressure Scanner (Declining + Reduced Pressure) ---
+
+function openPressureModal() {
+    const modal = document.getElementById('pressure-modal');
+    const loading = document.getElementById('pressure-loading');
+    const resultsDiv = document.getElementById('pressure-results');
+
+    if (modal) {
+        modal.classList.remove('hidden');
+        modal.style.display = 'block';
+
+        // Reset and clear previous results
+        resultsDiv.innerHTML = '';
+        loading.classList.remove('hidden');
+        loading.style.display = 'block';
+
+        // Fetch data
+        fetch('/api/pressure-stocks?min_days=2')
+            .then(response => response.json())
+            .then(data => {
+                loading.classList.add('hidden');
+                loading.style.display = 'none';
+
+                if (data.length === 0) {
+                    resultsDiv.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 20px;">目前沒有符合條件的股票</div>';
+                    return;
+                }
+
+                data.forEach(stock => {
+                    const card = createPressureStockCard(stock);
+                    resultsDiv.appendChild(card);
+                });
+            })
+            .catch(error => {
+                console.error('Error fetching pressure stocks:', error);
+                loading.style.display = 'none';
+                resultsDiv.innerHTML = '<div style="color: red; text-align: center;">載入失敗，請稍後再試</div>';
+            });
+    }
+}
+
+function closePressureModal() {
+    const modal = document.getElementById('pressure-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+    }
+}
+
+function createPressureStockCard(stock) {
+    const div = document.createElement('div');
+    div.className = 'stock-card';
+    div.onclick = () => openChart(stock.code, stock.name, stock.category);
+
+    // Format tags
+    const tagsHtml = (stock.tags || []).map(tag =>
+        `<span class="stock-tag" style="background: #23863620; color: #238636; border: 1px solid #238636;">${tag}</span>`
+    ).join('');
+
+    div.innerHTML = `
+        <div class="stock-header">
+            <span class="stock-code">${stock.code}</span>
+            <span class="stock-name">${stock.name || ''}</span>
+        </div>
+        <div class="stock-price-row">
+            <span class="stock-price">$${stock.price}</span>
+            <span class="stock-change price-down">
+                ▼ ${Math.abs(stock.change)} (${stock.change_percent}%)
+            </span>
+        </div>
+        <div class="stock-info-row" style="margin-top: 5px; font-size: 0.85em; color: #8b949e;">
+            <span>連跌 ${stock.consecutive_drop_days} 天</span>
+            <span>上影線佔比: ${stock.today_shadow_ratio}%</span>
+        </div>
+        <div class="stock-tags">
+            ${tagsHtml}
+        </div>
+    `;
+    return div;
+}
+
+// --- 分時強勢功能 (Intraday Strength) ---
+
+async function openIntradayModal() {
+    const modal = document.getElementById('intraday-modal');
+    modal.classList.remove('hidden');
+    fetchIntradayStocks();
+}
+
+function closeIntradayModal() {
+    document.getElementById('intraday-modal').classList.add('hidden');
+}
+
+async function fetchIntradayStocks() {
+    const listEl = document.getElementById('intraday-list');
+    const loadingEl = document.getElementById('intraday-loading');
+
+    listEl.innerHTML = '';
+    loadingEl.classList.remove('hidden');
+
+    try {
+        const response = await fetch('/api/intraday-stocks');
+        const data = await response.json();
+        const stocks = data.stocks || [];
+
+        loadingEl.classList.add('hidden');
+
+        if (stocks.length === 0) {
+            listEl.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 20px; color: #8b949e;">目前沒有發現符合分時強勢條件的股票。</div>';
+            return;
+        }
+
+        stocks.forEach(stock => {
+            const card = createIntradayCard(stock);
+            listEl.appendChild(card);
+        });
+
+    } catch (error) {
+        console.error('Error fetching intraday stocks:', error);
+        loadingEl.classList.add('hidden');
+        listEl.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #f85149;">載入失敗，請稍後重試</div>';
+    }
+}
+
+function createIntradayCard(stock) {
+    const card = document.createElement('div');
+    card.className = 'stock-card breakout-card';
+
+    // Tags HTML
+    const tagsHtml = (stock.tags || []).map(tag => {
+        let color = '#ff7b72'; // Default red for strength
+        if (tag.includes('突破平盤')) color = '#388bfd';
+        return '<span style="background: ' + color + '15; color: ' + color + '; border: 1px solid ' + color + '44; padding: 1px 6px; border-radius: 4px; font-size: 0.75em; margin-right: 4px; display: inline-block;">' + tag + '</span>';
+    }).join('');
+
+    card.onclick = () => openChart(stock.code, stock.name, stock.category);
+
+    card.innerHTML = `
+        <div class="card-header">
+             <div class="stock-identity">
+                <div class="breakout-title">
+                    <span class="stock-name">${stock.name}</span>
+                    <span class="stock-code-small">${stock.code}</span>
+                </div>
+                <div class="diagnostic-area" style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px;">
+                    ${tagsHtml}
+                </div>
+            </div>
+            <span class="badge ${stock.category === '其他' ? 'trad' : 'tech'}">${stock.category}</span>
+        </div>
+        
+        <div class="card-body">
+            <span class="stock-price up">${stock.price}</span>
+            <div class="stock-change up">
+                +${stock.change_percent}%
+            </div>
+        </div>
+        
+        <div class="breakout-metrics" style="margin-top: 12px; border-top: 1px solid #30363d; padding-top: 8px;">
+            <div class="breakout-metric">
+                <span class="metric-label">成交量</span>
+                <span class="metric-value" style="color: #c9d1d9;">${stock.volume.toLocaleString()} 張</span>
+            </div>
+            <div class="breakout-metric">
+                <span class="metric-label">當日高點</span>
+                <span class="metric-value">${stock.high}</span>
+            </div>
+            <div class="breakout-metric">
+                <span class="metric-label">回檔幅度</span>
+                <span class="metric-value" style="color: ${stock.rebound_ratio < 0.1 ? '#ff7b72' : '#8b949e'};">${(stock.rebound_ratio * 100).toFixed(1)}%</span>
+            </div>
+        </div>
+    `;
+    return card;
+}
+
+async function openWantGooMajorModal() {
+    const modal = document.getElementById('wantgoo-major-modal');
+    const loading = document.getElementById('wantgoo-major-loading');
+    const list = document.getElementById('wantgoo-major-list');
+
+    modal.classList.remove('hidden');
+    loading.classList.remove('hidden');
+    list.innerHTML = '';
+
+    try {
+        const response = await fetch('/api/wantgoo/major-investors');
+        const data = await response.json();
+
+        loading.classList.add('hidden');
+        if (data.length === 0) {
+            list.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #8b949e;">目前無資料</div>';
+            return;
+        }
+
+        data.forEach(stock => {
+            list.appendChild(createWantGooMajorCard(stock));
+        });
+    } catch (error) {
+        console.error('Error fetching WantGoo major investors:', error);
+        loading.innerHTML = '載入失敗，請稍後重試';
+    }
+}
+
+function closeWantGooMajorModal() {
+    document.getElementById('wantgoo-major-modal').classList.add('hidden');
+}
+
+async function openWantGooEPSModal() {
+    const modal = document.getElementById('wantgoo-eps-modal');
+    const loading = document.getElementById('wantgoo-eps-loading');
+    const list = document.getElementById('wantgoo-eps-list');
+
+    modal.classList.remove('hidden');
+    loading.classList.remove('hidden');
+    list.innerHTML = '';
+
+    try {
+        const response = await fetch('/api/wantgoo/eps-rank');
+        const data = await response.json();
+
+        loading.classList.add('hidden');
+        if (data.length === 0) {
+            list.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #8b949e;">目前無資料</div>';
+            return;
+        }
+
+        data.forEach(stock => {
+            list.appendChild(createWantGooEPSCard(stock));
+        });
+    } catch (error) {
+        console.error('Error fetching WantGoo EPS rank:', error);
+        loading.innerHTML = '載入失敗，請稍後重試';
+    }
+}
+
+function closeWantGooEPSModal() {
+    document.getElementById('wantgoo-eps-modal').classList.add('hidden');
+}
+
+function createWantGooMajorCard(stock) {
+    const div = document.createElement('div');
+    div.className = 'stock-card';
+    div.onclick = () => openChart(stock.code, stock.name, '主力');
+
+    const isUp = stock.change_percent >= 0;
+    const changeClass = isUp ? 'price-up' : 'price-down';
+    const changePrefix = isUp ? '▲' : '▼';
+
+    div.innerHTML = `
+        <div class="stock-header">
+            <span class="stock-code">${stock.code}</span>
+            <span class="stock-name">${stock.name}</span>
+        </div>
+        <div class="stock-price-row">
+            <span class="stock-price">$${stock.price}</span>
+            <span class="stock-change ${changeClass}">
+                ${changePrefix} ${Math.abs(stock.change_percent)}%
+            </span>
+        </div>
+        <div class="stock-info-row" style="margin-top: 5px; font-size: 0.85em; color: #8b949e;">
+            <span>淨買超: <span style="color: #ff7b72; font-weight: bold;">${stock.net_buy_sheets}</span> 張</span>
+        </div>
+    `;
+    return div;
+}
+
+function createWantGooEPSCard(stock) {
+    const div = document.createElement('div');
+    div.className = 'stock-card';
+    div.onclick = () => openChart(stock.code, stock.name, 'EPS');
+
+    div.innerHTML = `
+        <div class="stock-header">
+            <span class="stock-code">${stock.code}</span>
+            <span class="stock-name">${stock.name}</span>
+        </div>
+        <div class="stock-info-row" style="margin-top: 10px;">
+            <span style="font-size: 1.1em; color: #e3b341;">單季 EPS: <strong>${stock.eps}</strong></span>
+        </div>
+    `;
+    return div;
+}
+
+// Ensure click outside closes WantGoo modals
+document.addEventListener('DOMContentLoaded', () => {
+    window.addEventListener('click', (event) => {
+        const majorModal = document.getElementById('wantgoo-major-modal');
+        const epsModal = document.getElementById('wantgoo-eps-modal');
+        if (event.target === majorModal) closeWantGooMajorModal();
+        if (event.target === epsModal) closeWantGooEPSModal();
+
+        const pressureModal = document.getElementById('pressure-modal');
+        if (event.target === pressureModal) {
+            closePressureModal();
+        }
+
+        const exDividendModal = document.getElementById('ex-dividend-modal');
+        if (event.target === exDividendModal) {
+            closeExDividendModal();
+        }
+    });
+});
+
+// --- TWSE Ex-Dividend Feature ---
+
+async function openExDividendModal() {
+    const modal = document.getElementById('ex-dividend-modal');
+    const loading = document.getElementById('ex-dividend-loading');
+    const container = document.getElementById('ex-dividend-list');
+
+    modal.classList.remove('hidden');
+    loading.classList.remove('hidden');
+    container.innerHTML = '';
+
+    try {
+        const response = await fetch('/api/twse/ex-dividend?days=30');
+        const stocks = await response.json();
+
+        loading.classList.add('hidden');
+
+        if (!stocks || stocks.length === 0) {
+            container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #8b949e;">未來 30 天內無除權息預告</div>';
+            return;
+        }
+
+        stocks.forEach(stock => {
+            const card = createExDividendCard(stock);
+            container.appendChild(card);
+        });
+
+    } catch (error) {
+        console.error('Error fetching ex-dividend stocks:', error);
+        loading.classList.add('hidden');
+        container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #f85149;">載入失敗: ${error.message}</div>`;
+    }
+}
+
+function closeExDividendModal() {
+    document.getElementById('ex-dividend-modal').classList.add('hidden');
+}
+
+function createExDividendCard(stock) {
+    const card = document.createElement('div');
+    card.className = 'stock-card';
+    card.style.cursor = 'pointer';
+    card.onclick = () => {
+        openChart(stock.code, stock.name, '除權息');
+    };
+
+    // Date formatting
+    const dateObj = new Date(stock.date);
+    const dateStr = `${dateObj.getMonth() + 1}/${dateObj.getDate()}`;
+    const weekDay = ['日', '一', '二', '三', '四', '五', '六'][dateObj.getDay()];
+
+    let badgeColor = '#1f6feb'; // Default Blue
+    if (stock.type === '權') badgeColor = '#a371f7'; // Purple
+
+    card.innerHTML = `
+        <div class="card-header">
+            <div class="stock-identity">
+                <span class="stock-name">${stock.name}</span>
+                <span class="stock-code-small">${stock.code}</span>
+            </div>
+            <span style="background: ${badgeColor}; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.8em;">${stock.type}</span>
+        </div>
+        <div class="card-body">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="font-size: 1.2em; font-weight: bold; color: #e6edf3;">${dateStr} (${weekDay})</div>
+                <div style="color: #8b949e; font-size: 0.9em;">除權息日</div>
+            </div>
+            
+            <div class="layout-stats">
+                 ${stock.cash_dividend > 0 ? `
+                <div class="layout-stat-item">
+                    <span class="stat-label">現金股利</span>
+                    <span class="stat-value" style="color: #da3633;">${stock.cash_dividend.toFixed(2)}</span>
+                </div>` : ''}
+                
+                ${stock.stock_dividend > 0 ? `
+                <div class="layout-stat-item">
+                    <span class="stat-label">股票股利</span>
+                    <span class="stat-value" style="color: #da3633;">${stock.stock_dividend.toFixed(2)}</span>
+                </div>` : ''}
+            </div>
+        </div>
+    `;
+
     return card;
 }

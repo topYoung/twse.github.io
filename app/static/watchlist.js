@@ -165,70 +165,81 @@ class WatchlistPolling {
             if (!alert.enabled) return;
 
             const alertKey = `${alert.type}_${index}`;
-            if (item.triggered.includes(alertKey)) return; // Already triggered today
+            const isAlreadyTriggered = item.triggered.includes(alertKey);
 
-            let triggered = false;
+            let triggeredNow = false;
             let actualValue = null;
 
             switch (alert.type) {
                 case 'price_above':
-                    triggered = stock.price >= alert.value;
+                    triggeredNow = stock.price >= alert.value;
                     actualValue = stock.price;
                     break;
                 case 'price_below':
-                    triggered = stock.price <= alert.value;
+                    triggeredNow = stock.price <= alert.value;
                     actualValue = stock.price;
                     break;
                 case 'change_percent_above':
-                    triggered = stock.change_percent >= alert.value;
+                    triggeredNow = stock.change_percent >= alert.value;
                     actualValue = stock.change_percent;
                     break;
                 case 'change_percent_below':
-                    triggered = stock.change_percent <= alert.value;
+                    triggeredNow = stock.change_percent <= alert.value;
                     actualValue = stock.change_percent;
                     break;
                 case 'bid_ask_ratio_above':
-                    triggered = stock.bid_ask_ratio >= alert.value;
+                    triggeredNow = stock.bid_ask_ratio >= alert.value;
                     actualValue = stock.bid_ask_ratio;
                     break;
             }
 
-            if (triggered) {
-                this.notify(item.stock_name, alert, actualValue, stock);
-                item.triggered.push(alertKey);
-                this.manager.save();
+            if (triggeredNow) {
+                if (!isAlreadyTriggered) {
+                    this.notify(item.stock_name, alert, actualValue, stock);
+                    item.triggered.push(alertKey);
+                    this.manager.save();
+                }
+            } else {
+                // 如果先前已觸發，但現在條件不再滿足（例如修改了條件或價格回落）
+                // 則從觸發清單中移除，這樣之後若再次達成條件可以再次觸發，且 UI 會更新
+                if (isAlreadyTriggered) {
+                    item.triggered = item.triggered.filter(k => k !== alertKey);
+                    this.manager.save();
+                    // 通知 UI 重新渲染（可選，通常 check() 後會 renderItems）
+                    if (typeof renderWatchlistItems === 'function') {
+                        renderWatchlistItems();
+                    }
+                }
             }
         });
     }
 
     notify(stockName, alert, actualValue, stock) {
-        const title = `⚠️ ${stockName} 警示`;
-        const body = `${ALERT_TYPES[alert.type]}: ${alert.value}\n實際: ${actualValue}\n目前股價: ${stock.price} (${stock.change_percent >= 0 ? '+' : ''}${stock.change_percent}%)`;
+        const title = `${stockName} 警示`;
+        const body = `${ALERT_TYPES[alert.type]}: ${alert.value} (目前: ${actualValue})`;
 
         console.log(`[Watchlist] Alert triggered: ${title} - ${body}`);
 
-        // Browser notification
+        // 1. 頂層橫幅與聲音提示 (強烈提示)
+        if (typeof showTopLevelAlert === 'function') {
+            showTopLevelAlert(title, body, stock.code);
+        }
+
+        // 2. 瀏覽器系統通知
         if (Notification.permission === 'granted') {
-            const notification = new Notification(title, {
+            const notification = new Notification(`⚠️ ${title}`, {
                 body: body,
                 icon: '/static/icon.png',
-                badge: '/static/icon.png',
                 requireInteraction: false
             });
 
             notification.onclick = function () {
                 window.focus();
-                openChart(stock.code, stockName, '監控警示');
+                if (typeof openChart === 'function') {
+                    openChart(stock.code, stockName, '監控警示');
+                }
                 notification.close();
             };
-        }
-
-        // Also play sound (optional)
-        try {
-            const audio = new Audio('/static/alert.mp3'); //如果有音效檔案
-            audio.play().catch(e => console.log('Audio play failed:', e));
-        } catch (e) {
-            // Ignore if no audio file
         }
     }
 

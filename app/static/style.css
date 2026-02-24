@@ -941,6 +941,7 @@ button:hover {
         padding-bottom: 15px;
     }
 }
+
 /* ========================================
    監控清單功能樣式
    ======================================== */
@@ -1048,4 +1049,87 @@ button:hover {
     background: rgba(56, 139, 253, 0.15);
     color: #388bfd;
     border: 1px solid rgba(56, 139, 253, 0.44);
+}
+
+/* === Watchlist Alert Banner === */
+#top-alert-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    background: linear-gradient(90deg, #da3633 0%, #ff7b72 100%);
+    color: white;
+    z-index: 9999;
+    padding: 12px 20px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    animation: slideDown 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+    cursor: pointer;
+}
+
+.alert-content {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    max-width: 1200px;
+    width: 100%;
+}
+
+.alert-icon {
+    font-size: 1.5em;
+}
+
+#alert-message {
+    flex-grow: 1;
+    font-size: 1.1em;
+    font-weight: bold;
+}
+
+.alert-close {
+    background: rgba(0, 0, 0, 0.2);
+    border: none;
+    color: white;
+    font-size: 1.5em;
+    cursor: pointer;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background 0.2s;
+}
+
+.alert-close:hover {
+    background: rgba(0, 0, 0, 0.4);
+}
+
+/* Flash Animation */
+.flash-text {
+    animation: textFlash 0.5s infinite alternate;
+}
+
+@keyframes textFlash {
+    from {
+        color: #fff;
+        text-shadow: 0 0 5px #fff;
+    }
+
+    to {
+        color: #f1e05a;
+        /* Yellow */
+        text-shadow: 0 0 15px #f1e05a, 0 0 5px #da3633;
+    }
+}
+
+@keyframes slideDown {
+    from {
+        transform: translateY(-100%);
+    }
+
+    to {
+        transform: translateY(0);
+    }
 }

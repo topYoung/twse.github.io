@@ -5,6 +5,8 @@ from app.services.stock_data import get_market_index, get_filtered_stocks, get_s
 from app.services.layout_analyzer import get_all_investors_summary, get_layout_stocks, get_multi_investor_layout, get_major_investors_layout
 from app.services.breakout_scanner import get_breakout_stocks, get_rebound_stocks, get_downtrend_stocks
 from app.services.dividend_scanner import get_high_dividend_stocks
+from app.services.wantgoo_service import wantgoo_service
+from app.services.twse_service import fetch_ex_dividend_stocks
 
 app = FastAPI()
 # Force server reload for stock_data updates
@@ -160,3 +162,41 @@ async def api_momentum_stocks(min_days: int = 2):
     """
     from app.services.momentum_scanner import get_momentum_stocks
     return get_momentum_stocks(min_days)
+
+@app.get("/api/pressure-stocks")
+async def api_pressure_stocks(min_days: int = 2):
+    """
+    Get stocks with consecutive drops but decreasing selling pressure.
+    Args:
+        min_days: Minimum consecutive drop days (default 2)
+    """
+    from app.services.pressure_scanner import get_pressure_stocks
+    return get_pressure_stocks(min_days)
+
+@app.get("/api/intraday-stocks")
+async def api_intraday_stocks(force_refresh: bool = False):
+    """
+    Get intraday strength stocks (rising with momentum).
+    """
+    from app.services.intraday_scanner import get_intraday_strength_stocks
+    return get_intraday_strength_stocks(force_refresh)
+
+# --- WantGoo Data Endpoints ---
+
+@app.get("/api/wantgoo/major-investors")
+async def api_wantgoo_major_investors():
+    """獲取玩股網主力進出排行"""
+    return wantgoo_service.get_major_investors_rank()
+
+@app.get("/api/wantgoo/eps-rank")
+async def api_wantgoo_eps_rank():
+    """獲取玩股網 EPS 排行"""
+    return wantgoo_service.get_eps_rank()
+
+@app.get("/api/twse/ex-dividend")
+async def api_twse_ex_dividend(days: int = 30):
+    """
+    Get ex-dividend stocks for the next `days` days.
+    """
+    return fetch_ex_dividend_stocks(days)
+

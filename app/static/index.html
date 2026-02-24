@@ -29,7 +29,16 @@
     </style>
 </head>
 
-<body>
+<body style="position: relative;">
+    <!-- Watchlist Alert Banner (Hidden by default) -->
+    <div id="top-alert-banner" class="hidden">
+        <div class="alert-content">
+            <span class="alert-icon">⚠️</span>
+            <span id="alert-message" class="flash-text"></span>
+            <button class="alert-close" onclick="closeTopAlert()">&times;</button>
+        </div>
+    </div>
+
     <div class="container">
         <header>
             <div class="header-left">
@@ -58,6 +67,10 @@
                     </div>
                     <div class="investor-quick-actions" style="display: flex; gap: 8px;">
                         <!-- 新增功能放在最右邊 -->
+                        <button class="investor-btn" onclick="openIntradayModal()"
+                            style="border: 1px solid #da3633; color: #da3633;">
+                            <span class="icon">☀️</span> 分時強勢
+                        </button>
                         <button class="investor-btn" onclick="openDowntrendModal()"
                             style="border: 1px solid #238636; color: #238636;">
                             <span class="icon">📉</span> 高檔轉弱
@@ -103,10 +116,29 @@
                             style="border: 1px solid #a371f7; color: #a371f7;">
                             <span class="icon">📉</span> 法人接刀
                         </button>
+                        <!-- Pressure Scanner Button -->
+                        <button class="investor-btn" onclick="openPressureModal()"
+                            style="border: 1px solid #79c0ff; color: #79c0ff;">
+                            <span class="icon">🛡️</span> 賣壓減轉強
+                        </button>
                         <!-- 我的監控按鈕 -->
                         <button class="investor-btn" onclick="openWatchlistModal()"
                             style="border: 1px solid #ffa657; color: #ffa657;">
                             <span class="icon">🎯</span> 我的監控
+                        </button>
+                        <!-- WantGoo Buttons -->
+                        <button class="investor-btn" onclick="openWantGooMajorModal()"
+                            style="border: 1px solid #ff7b72; color: #ff7b72;">
+                            <span class="icon">📈</span> 主力進出(玩)
+                        </button>
+                        <button class="investor-btn" onclick="openWantGooEPSModal()"
+                            style="border: 1px solid #e3b341; color: #e3b341;">
+                            <span class="icon">📊</span> EPS排行
+                        </button>
+                        <!-- TWSE Ex-Dividend Button -->
+                        <button class="investor-btn" onclick="openExDividendModal()"
+                            style="border: 1px solid #79c0ff; color: #79c0ff;">
+                            <span class="icon">📅</span> 近月除息
                         </button>
                     </div>
                 </div>
@@ -158,6 +190,9 @@
             </label>
             <label class="checkbox-label">
                 <input type="checkbox" name="strategy" value="divergence"> 法人接刀
+            </label>
+            <label class="checkbox-label">
+                <input type="checkbox" name="strategy" value="intraday"> 分時強勢
             </label>
         </div>
     </div>
@@ -333,10 +368,22 @@
                 <!-- 列表將在這裡產生 -->
             </div>
         </div>
-        <div id="momentum-list" class="stock-grid">
-            <!-- 列表將在這裡產生 -->
+    </div>
+
+    <!-- 分時強勢 Modal -->
+    <div id="intraday-modal" class="modal hidden">
+        <div class="modal-content investor-modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <h2>☀️ 分時強勢 (盤中即時偵測)</h2>
+                <button class="close-modal-btn" onclick="closeIntradayModal()">✕</button>
+            </div>
+            <div id="intraday-loading" class="loading-spinner hidden">正在偵測強勢股，請稍候...</div>
+            <div id="intraday-list" class="stock-grid">
+                <!-- 列表將在這裡產生 -->
+            </div>
         </div>
     </div>
+
     </div>
 
     <!-- 法人接刀 Modal -->
@@ -355,6 +402,28 @@
             <div id="divergence-loading" class="loading-spinner hidden">正在掃描背離股...</div>
             <div id="divergence-list" class="stock-grid">
                 <!-- 列表將在這裡產生 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Pressure Stocks Modal -->
+    <div id="pressure-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <h2>🛡️ 賣壓減轉強 (連跌但賣壓減)</h2>
+                <button class="close-modal-btn" onclick="closePressureModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-description">
+                    篩選條件：(連續下跌 2 天以上) 或 (3 天內累積跌幅 > 10%)，且今日上影線變短或消失 (賣壓減弱)。
+                    <br>適合尋找急跌後籌碼沉澱、隨時準備反彈的個股。
+                </p>
+
+                <div id="pressure-loading" class="loading-spinner hidden">載入中...</div>
+                <div id="pressure-results" class="stock-grid"
+                    style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));">
+                    <!-- Results will be injected here -->
+                </div>
             </div>
         </div>
     </div>
@@ -415,7 +484,7 @@
                                 step="0.1">
                         </div>
                     </div>
-                    <button onclick="addWatchlistItem()" class="investor-btn"
+                    <button id="add-watchlist-btn" onclick="addWatchlistItem()" class="investor-btn"
                         style="margin-top: 15px; background: #238636; color: white; border: none; padding: 8px 16px;">加入監控</button>
                 </div>
             </div>
@@ -437,9 +506,53 @@
         </div>
     </div>
 
+    <!-- WantGoo Major Investors Modal -->
+    <div id="wantgoo-major-modal" class="modal hidden">
+        <div class="modal-content investor-modal-content" style="max-width: 1000px;">
+            <div class="modal-header">
+                <h2>📈 主力進出買賣超排行 (玩股網)</h2>
+                <button class="close-modal-btn" onclick="closeWantGooMajorModal()">✕</button>
+            </div>
+            <div id="wantgoo-major-loading" class="loading-spinner hidden">正在抓取玩股網即時數據...</div>
+            <div id="wantgoo-major-list" class="stock-grid">
+                <!-- 列表將在這裡產生 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- WantGoo EPS Rank Modal -->
+    <div id="wantgoo-eps-modal" class="modal hidden">
+        <div class="modal-content investor-modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <h2>📊 單季 EPS 排行榜 (玩股網)</h2>
+                <button class="close-modal-btn" onclick="closeWantGooEPSModal()">✕</button>
+            </div>
+            <div id="wantgoo-eps-loading" class="loading-spinner hidden">正在分析最新季報數據...</div>
+            <div id="wantgoo-eps-list" class="stock-grid">
+                <!-- 列表將在這裡產生 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- TWSE Ex-Dividend Modal -->
+    <div id="ex-dividend-modal" class="modal hidden">
+        <div class="modal-content investor-modal-content" style="max-width: 1000px;">
+            <div class="modal-header">
+                <h2>📅 近月除權息預告 (TWSE)</h2>
+                <button class="close-modal-btn" onclick="closeExDividendModal()">✕</button>
+            </div>
+            <div id="ex-dividend-loading" class="loading-spinner hidden">正在查詢證交所資料...</div>
+            <div id="ex-dividend-list" class="stock-grid">
+                <!-- 列表將在這裡產生 -->
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/alert-utils.js"></script>
     <script src="/static/watchlist.js"></script>
     <script src="/static/watchlist-ui.js"></script>
-    <script src="/static/script_v2.js?v=5"></script>
+    <script src="/static/script_v2.js?v=7"></script>
 </body>
+
 
 </html>

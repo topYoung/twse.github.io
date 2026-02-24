@@ -3,8 +3,9 @@
  * 與 watchlist.js 模組整合
  */
 
-// 全域變數：目前選中的股票
+// 全域變數：目前選中的股票與編輯中的 ID
 let selectedStock = null;
+let editingItemId = null;
 
 // 開啟監控清單 Modal
 function openWatchlistModal() {
@@ -20,9 +21,13 @@ function closeWatchlistModal() {
     const modal = document.getElementById('watchlist-modal');
     modal.classList.add('hidden');
 
-    // 清空搜尋
+    // 清空搜尋與編輯狀態
     document.getElementById('watchlist-search').value = '';
     selectedStock = null;
+    editingItemId = null;
+    const addBtn = document.getElementById('add-watchlist-btn');
+    if (addBtn) addBtn.textContent = '加入監控';
+
     document.getElementById('watchlist-selected-stock').classList.add('hidden');
     document.getElementById('watchlist-alert-config').classList.add('hidden');
 }
@@ -79,10 +84,16 @@ function createWatchlistCard(item) {
                 <span style="color: #58a6ff; font-size: 1.1em; font-weight: bold;">${item.stock_name}</span>
                 <span style="color: #8b949e; margin-left: 8px;">(${item.stock_code})</span>
             </div>
-            <button onclick="removeWatchlistItem('${item.id}')" class="investor-btn" 
-                style="padding: 4px 8px; background: #da3633; border: none; color: white; font-size: 0.9em;">
-                刪除
-            </button>
+            <div style="display: flex; gap: 8px;">
+                <button onclick="editWatchlistItem('${item.id}')" class="investor-btn" 
+                    style="padding: 4px 8px; background: #0d1117; border: 1px solid #30363d; color: #58a6ff; font-size: 0.9em;">
+                    修改
+                </button>
+                <button onclick="removeWatchlistItem('${item.id}')" class="investor-btn" 
+                    style="padding: 4px 8px; background: #da3633; border: none; color: white; font-size: 0.9em;">
+                    刪除
+                </button>
+            </div>
         </div>
         <div class="alert-list">
             ${alertsHtml}
@@ -165,6 +176,45 @@ function selectStock(stock) {
     document.getElementById('watchlist-alert-config').classList.remove('hidden');
 }
 
+// 修改監控項目（回填資料）
+function editWatchlistItem(id) {
+    const item = watchlistManager.get(id);
+    if (!item) return;
+
+    editingItemId = id;
+    selectedStock = { code: item.stock_code, name: item.stock_name };
+
+    // 顯示選中的股票與設定區
+    document.getElementById('selected-stock-name').textContent = `修改監控：${item.stock_name} (${item.stock_code})`;
+    document.getElementById('watchlist-selected-stock').classList.remove('hidden');
+    document.getElementById('watchlist-alert-config').classList.remove('hidden');
+
+    // 切換按鈕文字
+    const addBtn = document.getElementById('add-watchlist-btn');
+    if (addBtn) addBtn.textContent = '儲存修改';
+
+    // 清空並回填警示條件
+    const alertItems = document.querySelectorAll('.alert-config-item');
+    alertItems.forEach(configItem => {
+        const checkbox = configItem.querySelector('.alert-enabled');
+        const valueInput = configItem.querySelector('.alert-value');
+
+        const type = checkbox.dataset.type;
+        const alertData = item.alerts.find(a => a.type === type);
+
+        if (alertData) {
+            checkbox.checked = alertData.enabled;
+            valueInput.value = alertData.value;
+        } else {
+            checkbox.checked = false;
+            valueInput.value = '';
+        }
+    });
+
+    // 滾動到設定區
+    document.getElementById('watchlist-alert-config').scrollIntoView({ behavior: 'smooth' });
+}
+
 // 新增監控項目
 function addWatchlistItem() {
     if (!selectedStock) {
@@ -194,11 +244,21 @@ function addWatchlistItem() {
         return;
     }
 
-    // 新增到管理器
-    watchlistManager.add(selectedStock, alerts);
+    if (editingItemId) {
+        // 更新模式
+        watchlistManager.update(editingItemId, alerts);
+        alert(`✓ 已更新 ${selectedStock.name} 的監控條件`);
+    } else {
+        // 新增模式
+        watchlistManager.add(selectedStock, alerts);
+        alert(`✓ 已新增 ${selectedStock.name} 至監控清單`);
+    }
 
-    // 重置表單
+    // 重置表單與狀態
     selectedStock = null;
+    editingItemId = null;
+    const addBtn = document.getElementById('add-watchlist-btn');
+    if (addBtn) addBtn.textContent = '加入監控';
     document.getElementById('watchlist-selected-stock').classList.add('hidden');
     document.getElementById('watchlist-alert-config').classList.add('hidden');
 
@@ -210,6 +270,11 @@ function addWatchlistItem() {
 
     // 重新渲染列表
     renderWatchlistItems();
+
+    // 立即觸發一次檢查，以更新觸發狀態（滿足用戶修改後重新判斷的需求）
+    if (watchlistPolling) {
+        watchlistPolling.check();
+    }
 
     // 顯示成功訊息
     alert(`✓ 已新增 ${selectedStock.name} 至監控清單`);
