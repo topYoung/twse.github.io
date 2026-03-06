@@ -7,6 +7,7 @@ from app.services.breakout_scanner import get_breakout_stocks, get_rebound_stock
 from app.services.dividend_scanner import get_high_dividend_stocks
 from app.services.wantgoo_service import wantgoo_service
 from app.services.twse_service import fetch_ex_dividend_stocks
+from app.services.macd_scanner import get_macd_breakout_stocks
 
 app = FastAPI()
 # Force server reload for stock_data updates
@@ -121,6 +122,13 @@ async def api_downtrend_stocks():
     Get high level reversal stocks (Downtrend)
     """
     return get_downtrend_stocks()
+
+@app.get("/api/macd-breakout-stocks")
+async def api_macd_breakout_stocks():
+    """
+    Get MACD breakout stocks (histogram turning red or green shrinking with converging lines)
+    """
+    return get_macd_breakout_stocks()
 
 @app.get("/api/layout-stocks/intersection/{mode}")
 async def api_layout_intersection(mode: str, days: int = 90, min_score: float = 30.0, top_n: int = 50):

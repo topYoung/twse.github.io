@@ -83,6 +83,10 @@
                             style="border: 1px solid #da3633; color: #da3633;">
                             <span class="icon">🚀</span> 起漲訊號
                         </button>
+                        <button class="investor-btn" onclick="openMacdBreakoutModal()"
+                            style="border: 1px solid #ff7b72; color: #ff7b72;">
+                            <span class="icon">⚡</span> MACD起漲
+                        </button>
                         <!-- 主力買超 (外資左邊) -->
                         <button class="investor-btn" onclick="openMajorInvestorsModal()"
                             style="border: 1px solid #79c0ff; color: #79c0ff;">
@@ -281,6 +285,20 @@
             </div>
             <div id="breakout-loading" class="loading-spinner hidden">正在掃描市場，請稍候...</div>
             <div id="breakout-list" class="stock-grid">
+                <!-- 列表將在這裡產生 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- MACD 起漲 Modal -->
+    <div id="macd-breakout-modal" class="modal hidden">
+        <div class="modal-content investor-modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <h2>⚡ MACD 起漲偵測 (兩線收斂 + 即將金叉)</h2>
+                <button class="close-modal-btn" onclick="closeMacdBreakoutModal()">✕</button>
+            </div>
+            <div id="macd-breakout-loading" class="loading-spinner hidden">正在掃描市場 MACD 形態，請稍候...</div>
+            <div id="macd-breakout-list" class="stock-grid">
                 <!-- 列表將在這裡產生 -->
             </div>
         </div>

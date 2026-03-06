@@ -2234,3 +2234,80 @@ function createExDividendCard(stock) {
 
     return card;
 }
+
+// --- MACD 起漲 (MACD Breakout) ---
+function openMacdBreakoutModal() {
+    document.getElementById('macd-breakout-modal').classList.remove('hidden');
+    const listDiv = document.getElementById('macd-breakout-list');
+    const loadingDiv = document.getElementById('macd-breakout-loading');
+    
+    // 如果已經有資料，就不重新抓取
+    if (listDiv.children.length > 0) return;
+    
+    loadingDiv.classList.remove('hidden');
+    listDiv.innerHTML = '';
+    
+    fetch('/api/macd-breakout-stocks')
+        .then(response => response.json())
+        .then(data => {
+            loadingDiv.classList.add('hidden');
+            
+            if (!data || data.length === 0) {
+                listDiv.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #8b949e; padding: 20px;">目前沒有符合 MACD 起漲條件的股票。</div>';
+                return;
+            }
+            
+            data.forEach(stock => {
+                const card = document.createElement('div');
+                card.className = 'stock-card';
+                card.onclick = () => openChart(stock.code, stock.name, 'MACD起漲');
+                
+                const changeClass = stock.change_percent >= 0 ? 'positive' : 'negative';
+                const sign = stock.change_percent > 0 ? '+' : '';
+                
+                // 決定卡片邊框或顏色標記 (剛翻紅比較重要可以亮一點)
+                const isJustRed = stock.is_just_red;
+                const borderStyle = isJustRed ? 'border-left: 4px solid #f85149;' : 'border-left: 4px solid #2ea043;';
+                
+                card.innerHTML = `
+                    <div class="stock-header">
+                        <span class="stock-name" style="${borderStyle} padding-left: 8px;">
+                            ${stock.name} (${stock.code})
+                        </span>
+                    </div>
+                    
+                    <div class="stock-price-row" style="margin-top: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: baseline;">
+                        <span class="price" style="font-size: 1.4em; font-weight: bold;">${stock.price.toFixed(2)}</span>
+                        <span class="change ${changeClass}" style="font-size: 1.1em; font-weight: bold;">
+                            ${sign}${stock.change_percent.toFixed(2)}%
+                        </span>
+                    </div>
+                    
+                    <div style="background: #0d1117; padding: 10px; border-radius: 6px; margin-bottom: 5px;">
+                        <div style="color: #ff7b72; font-weight: bold; margin-bottom: 5px;">
+                            ${stock.pattern}
+                        </div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 0.9em; color: #c9d1d9;">
+                            <span>DIF: <span style="color: #8b949e">${stock.macd.dif}</span></span>
+                            <span>MACD(DEA): <span style="color: #8b949e">${stock.macd.dea}</span></span>
+                            <span>柱狀(Hist): <span style="color: ${stock.macd.hist > 0 ? '#f85149' : '#2ea043'}">${stock.macd.hist}</span></span>
+                        </div>
+                    </div>
+                    
+                    <div style="font-size: 0.85em; color: #8b949e; text-align: right; margin-top: 8px;">
+                        點擊查看走勢圖
+                    </div>
+                `;
+                listDiv.appendChild(card);
+            });
+        })
+        .catch(error => {
+            console.error('Error fetching MACD breakout stocks:', error);
+            loadingDiv.classList.add('hidden');
+            listDiv.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #ff7b72; padding: 20px;">載入失敗，請重試。</div>';
+        });
+}
+
+function closeMacdBreakoutModal() {
+    document.getElementById('macd-breakout-modal').classList.add('hidden');
+}
