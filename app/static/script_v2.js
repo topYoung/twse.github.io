@@ -1311,7 +1311,8 @@ async function runComprehensiveAnalysis() {
         'investor2': '/api/layout-stocks/intersection/any-2?days=90&min_score=30&top_n=200',
         'dividend': '/api/high-dividend-stocks?min_yield=3.0&top_n=200',
         'divergence': '/api/divergence-stocks?days=5&min_net_buy=100&max_price_change=1.0',
-        'intraday': '/api/intraday-stocks'
+        'intraday': '/api/intraday-stocks',
+        'macd_breakout': '/api/macd-breakout-stocks'
     };
 
     // Disable button

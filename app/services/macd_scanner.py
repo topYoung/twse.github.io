@@ -91,7 +91,7 @@ def get_macd_breakout_stocks() -> List[Dict[str, Any]]:
         if min_price == 0:
             return False
         price_range_pct = (window_close.max() - min_price) / min_price
-        if price_range_pct > 0.18:
+        if price_range_pct > 0.25:
             return False
 
         # 條件 2：前 20 日 DIF 中位數夠小（貼近 0 軸）
@@ -99,7 +99,7 @@ def get_macd_breakout_stocks() -> List[Dict[str, Any]]:
         if len(window_dif) < 5:
             return False
         dif_median_ratio = window_dif.abs().median() / close_latest
-        if dif_median_ratio > 0.03:
+        if dif_median_ratio > 0.05:
             return False
 
         # 條件 3：前 15 日 MACD 柱狀體最大絕對值夠小（沒有明顯波動）
@@ -107,7 +107,7 @@ def get_macd_breakout_stocks() -> List[Dict[str, Any]]:
         if len(window_hist) < 5:
             return False
         hist_max_ratio = window_hist.abs().max() / close_latest
-        if hist_max_ratio > 0.05:
+        if hist_max_ratio > 0.08:
             return False
 
         return True
