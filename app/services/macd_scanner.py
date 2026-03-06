@@ -14,52 +14,56 @@ def get_macd_breakout_stocks() -> List[Dict[str, Any]]:
     3. 成交量、價格等基本過濾條件
     """
     # 1. 取得全市場股票基本資訊
-    all_stocks = get_filtered_stocks()
-    if not all_stocks:
+    # 1. 取得全市場股票基本資訊 (不要用 get_filtered_stocks 因為它會過濾掉遠離均線的股票)
+    from app.services.categories import TECH_STOCKS, TRAD_STOCKS, STOCK_SUB_CATEGORIES, DELISTED_STOCKS
+    import twstock
+    
+    keys_from_map = list(STOCK_SUB_CATEGORIES.keys())
+    all_stock_codes = list(set(TECH_STOCKS + TRAD_STOCKS + keys_from_map))
+    stock_codes = [s for s in all_stock_codes if s not in DELISTED_STOCKS]
+    
+    if not stock_codes:
         return []
+        
+    stock_info_map = {}
+    for code in stock_codes:
+        name = code
+        if code in twstock.codes:
+            name = twstock.codes[code].name
+        stock_info_map[code] = {'name': name}
     
-    # 建立以股號為 key 的字典方便對照資訊
-    stock_info_map = {s['code']: s for s in all_stocks}
-    stock_codes = list(stock_info_map.keys())
-    
-    # 2. 獲取盤中即時報價，確認當日狀況
-    realtime_data = get_stocks_realtime(stock_codes)
-    realtime_map = {d['code']: d for d in realtime_data}
-    
-    history_data = {}
+    # 2. 移除個別 get_stocks_realtime 呼叫，避免盤後觸發大量 target rate limit。
+    # 所有需要的最新股價與成交量直接從後續的 history_data (yf.download 批次拿到的資料) 取得
     
     # 3. 取得近期歷史價格 (至少需要 40 天來計算 MACD)
+    import yfinance as yf
+    from concurrent.futures import ThreadPoolExecutor
+    from app.services.stock_data import get_yahoo_ticker
+    
     def fetch_history(code: str):
         try:
-            hist_dict = get_stock_history(code, interval='1d')
-            # 轉換為 DataFrame 給後續處理
-            if hist_dict and 'candlestick' in hist_dict and len(hist_dict['candlestick']) > 0:
-                data = []
-                for item in hist_dict['candlestick']:
-                    # {'time': '2023-01-01', 'open': ..., 'high': ..., 'low': ..., 'close': ..., 'volume': ...}
-                    data.append({
-                        'Date': pd.to_datetime(item['time']),
-                        'Open': item['open'],
-                        'High': item['high'],
-                        'Low': item['low'],
-                        'Close': item['close'],
-                        'Volume': item['volume']
-                    })
-                df = pd.DataFrame(data)
-                df.set_index('Date', inplace=True)
+            ticker_symbol = get_yahoo_ticker(code)
+            ticker = yf.Ticker(ticker_symbol)
+            df = ticker.history(period="3mo")
+            if not df.empty and len(df) > 30:
+                # 確保時區與格式正確
+                if df.index.tz is not None:
+                    df.index = df.index.tz_localize(None)
                 return code, df
-        except Exception as e:
+        except Exception:
             pass
         return code, None
         
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    history_data = {}
+    with ThreadPoolExecutor(max_workers=5) as executor:
         futures = [executor.submit(fetch_history, code) for code in stock_codes]
         for future in futures:
-            code, df = future.result()
-            if df is not None:
-                history_data[code] = df
-                
-
+            try:
+                code, df = future.result()
+                if df is not None:
+                    history_data[code] = df
+            except Exception:
+                pass
     
     breakout_candidates = []
     
@@ -109,29 +113,24 @@ def get_macd_breakout_stocks() -> List[Dict[str, Any]]:
             
             # 判斷邏輯
             # 情境 A：綠柱縮短，即將金叉 (hist_prev < 0 且 hist_latest < 0 且 hist_latest > hist_prev)
-            # 情境 B：剛翻紅，確認金叉 (hist_prev <= 0 且 hist_latest > 0 且 hist_latest 的值極小)
+            # 情境 B：剛翻紅，確認金叉 (hist_prev <= 0 且 hist_latest > 0)
             
-            is_green_shrinking = (hist_latest < 0) and (hist_latest > hist_prev) and (hist_prev > hist_prev2)
+            is_green_shrinking = (hist_latest < 0) and (hist_latest > hist_prev) 
             is_just_red = (hist_prev <= 0) and (hist_latest > 0)
             
-            # 收斂條件：兩線差距很小 (DIF 與 DEA 差距佔股價的比例要夠小)
-            # hist 其實就是 DIF - DEA，確保這個差距小於目前股價的 0.8%
-            is_converging = abs(hist_latest) / close_latest < 0.008
+            # 放寬收斂條件：兩線差距不超過目前股價的一定比例 (例如 10% 以內算合理範圍，因為 DIF/DEA 數值可能較大)
+            # 也可以直接看 hist 絕對值是否夠小，代表兩線接近
+            is_converging = abs(hist_latest) / close_latest < 0.05
             
-            # 放寬條件：只要綠柱縮短或剛翻紅，並且 DIF 不要離 0 太遠 (例如 |DIF| < price * 0.05)
-            is_dif_near_zero = abs(dif_latest) / close_latest < 0.05
+            # 放寬條件：DIF 不要離 0 太遠 (例如 |DIF| < price * 0.2)
+            is_dif_near_zero = abs(dif_latest) / close_latest < 0.2
 
             if (is_green_shrinking or is_just_red) and is_converging and is_dif_near_zero:
                 
-                # 可選：限制 DIF 不能太高，若 DIF 很高表示在高檔，可能只是高檔震盪。
-                # 我們偏好 DIF < 0 或稍微大於 0 (低基期起漲)
-                # 若只想找真的低檔起漲，可以加上 dif_latest < (close_latest * 0.05) 等等
-                
-                # 補充即時資訊
-                rt_info = realtime_map.get(code, {})
-                rt_price = rt_info.get('price', close_latest)
-                rt_change = rt_info.get('change_percent', 0.0)
-                rt_volume = rt_info.get('volume', volume_latest)
+                # 補充即時資訊 (現在直接依賴 df 最後一筆)
+                rt_price = close_latest
+                rt_change = (close_latest - df['Close'].iloc[-2]) / df['Close'].iloc[-2] * 100 if len(df) > 1 else 0.0
+                rt_volume = volume_latest
                 
                 pattern_desc = ""
                 if is_just_red:
@@ -140,22 +139,22 @@ def get_macd_breakout_stocks() -> List[Dict[str, Any]]:
                     pattern_desc = "🟢 綠柱縮短 (即將金叉)"
                 
                 # 簡單過濾：排除成交量太小或無流動性的標的 (例如當日成交量 > 100 張)
-                if rt_volume < 100:
+                if rt_volume < 50:
                     return None
                     
                 return {
                     'code': code,
                     'name': stock_info_map[code]['name'],
-                    'price': rt_price,
-                    'change_percent': rt_change,
-                    'volume': rt_volume,
+                    'price': float(rt_price),
+                    'change_percent': float(rt_change),
+                    'volume': int(rt_volume),
                     'macd': {
-                        'dif': round(dif_latest, 2),
-                        'dea': round(dea_latest, 2),
-                        'hist': round(hist_latest, 2)
+                        'dif': float(round(dif_latest, 2)),
+                        'dea': float(round(dea_latest, 2)),
+                        'hist': float(round(hist_latest, 2))
                     },
                     'pattern': pattern_desc,
-                    'is_just_red': is_just_red
+                    'is_just_red': bool(is_just_red)
                 }
             return None
             
