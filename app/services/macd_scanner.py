@@ -72,6 +72,46 @@ def get_macd_breakout_stocks() -> List[Dict[str, Any]]:
     # 對於大部分股票，DIF/DEA 的絕對值大約是價格的 0~5% 不等，差距(hist)則更小
     # 我們以 hist 絕對值與收盤價比例小於 0.005 (0.5%) 作為一組參考，或是 hist 的變化趨勢
     
+    def is_after_consolidation(close_series: pd.Series, hist: pd.Series, dif: pd.Series, close_latest: float) -> bool:
+        """
+        判斷是否為長期盤整後才出現 MACD 起漲訊號。
+        必須同時符合三個條件：
+        1. 前 30 日股價振幅 ≤ 18%（横盤整理）
+        2. 前 20 日 DIF 絕對值中位數 / 股價 < 3%（MACD 貼近零軸）
+        3. 前 15 日 MACD 柱最大絕對值 / 股價 < 5%（柱狀體無大幅波動）
+        """
+        if close_latest == 0:
+            return False
+
+        # 條件 1：前 30 日（排除最後 3 日）股價橫盤振幅
+        window_close = close_series.iloc[-33:-3]
+        if len(window_close) < 5:
+            return False
+        min_price = window_close.min()
+        if min_price == 0:
+            return False
+        price_range_pct = (window_close.max() - min_price) / min_price
+        if price_range_pct > 0.18:
+            return False
+
+        # 條件 2：前 20 日 DIF 中位數夠小（貼近 0 軸）
+        window_dif = dif.iloc[-23:-3]
+        if len(window_dif) < 5:
+            return False
+        dif_median_ratio = window_dif.abs().median() / close_latest
+        if dif_median_ratio > 0.03:
+            return False
+
+        # 條件 3：前 15 日 MACD 柱狀體最大絕對值夠小（沒有明顯波動）
+        window_hist = hist.iloc[-18:-3]
+        if len(window_hist) < 5:
+            return False
+        hist_max_ratio = window_hist.abs().max() / close_latest
+        if hist_max_ratio > 0.05:
+            return False
+
+        return True
+
     def process_stock(code: str, df: pd.DataFrame) -> Dict[str, Any]:
         """處理單檔股票的技術指標計算與判斷"""
         try:
@@ -125,22 +165,31 @@ def get_macd_breakout_stocks() -> List[Dict[str, Any]]:
             # 放寬條件：DIF 不要離 0 太遠 (例如 |DIF| < price * 0.2)
             is_dif_near_zero = abs(dif_latest) / close_latest < 0.2
 
-            if (is_green_shrinking or is_just_red) and is_converging and is_dif_near_zero:
+            # 盤整期過濾：確保訊號出現前有一段橫盤整理
+            consolidation = is_after_consolidation(close_series, hist, dif, close_latest)
+
+            if (is_green_shrinking or is_just_red) and is_converging and is_dif_near_zero and consolidation:
                 
                 # 補充即時資訊 (現在直接依賴 df 最後一筆)
                 rt_price = close_latest
                 rt_change = (close_latest - df['Close'].iloc[-2]) / df['Close'].iloc[-2] * 100 if len(df) > 1 else 0.0
                 rt_volume = volume_latest
                 
+                # === 量能過濾 ===
+                # 1. 絕對量：今日成交量至少 200 張（200,000 股），排除冷門股
+                MIN_VOLUME_SHARES = 200_000  # 200 張
+                if rt_volume < MIN_VOLUME_SHARES:
+                    return None
+                
+                # 2. 計算 5 日均量比，與截圖 VOL 5T 對應
+                vol_5d_avg = float(df['Volume'].iloc[-6:-1].mean()) if len(df) >= 6 else float(rt_volume)
+                vol_ratio = (rt_volume / vol_5d_avg) if vol_5d_avg > 0 else 1.0
+                
                 pattern_desc = ""
                 if is_just_red:
                     pattern_desc = "🔴 剛翻紅 (黃金交叉)"
                 elif is_green_shrinking:
                     pattern_desc = "🟢 綠柱縮短 (即將金叉)"
-                
-                # 簡單過濾：排除成交量太小或無流動性的標的 (例如當日成交量 > 100 張)
-                if rt_volume < 50:
-                    return None
                     
                 return {
                     'code': code,
@@ -148,6 +197,8 @@ def get_macd_breakout_stocks() -> List[Dict[str, Any]]:
                     'price': float(rt_price),
                     'change_percent': float(rt_change),
                     'volume': int(rt_volume),
+                    'vol_5d_avg': int(vol_5d_avg),
+                    'vol_ratio': round(float(vol_ratio), 2),
                     'macd': {
                         'dif': float(round(dif_latest, 2)),
                         'dea': float(round(dea_latest, 2)),

@@ -2240,35 +2240,39 @@ function openMacdBreakoutModal() {
     document.getElementById('macd-breakout-modal').classList.remove('hidden');
     const listDiv = document.getElementById('macd-breakout-list');
     const loadingDiv = document.getElementById('macd-breakout-loading');
-    
+
     // 如果已經有資料，就不重新抓取
     if (listDiv.children.length > 0) return;
-    
+
     loadingDiv.classList.remove('hidden');
     listDiv.innerHTML = '';
-    
+
     fetch('/api/macd-breakout-stocks')
         .then(response => response.json())
         .then(data => {
             loadingDiv.classList.add('hidden');
-            
+
             if (!data || data.length === 0) {
                 listDiv.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #8b949e; padding: 20px;">目前沒有符合 MACD 起漲條件的股票。</div>';
                 return;
             }
-            
+
             data.forEach(stock => {
                 const card = document.createElement('div');
                 card.className = 'stock-card';
-                card.onclick = () => openChart(stock.code, stock.name, 'MACD起漲');
-                
+                card.onclick = () => {
+                    closeMacdBreakoutModal();
+                    // 等 modal 完全隱藏後再開 chart，避免 chart container 尺寸計算錯誤
+                    setTimeout(() => openChart(stock.code, stock.name, 'MACD起漲'), 150);
+                };
+
                 const changeClass = stock.change_percent >= 0 ? 'positive' : 'negative';
                 const sign = stock.change_percent > 0 ? '+' : '';
-                
+
                 // 決定卡片邊框或顏色標記 (剛翻紅比較重要可以亮一點)
                 const isJustRed = stock.is_just_red;
                 const borderStyle = isJustRed ? 'border-left: 4px solid #f85149;' : 'border-left: 4px solid #2ea043;';
-                
+
                 card.innerHTML = `
                     <div class="stock-header">
                         <span class="stock-name" style="${borderStyle} padding-left: 8px;">
@@ -2294,8 +2298,15 @@ function openMacdBreakoutModal() {
                         </div>
                     </div>
                     
-                    <div style="font-size: 0.85em; color: #8b949e; text-align: right; margin-top: 8px;">
-                        點擊查看走勢圖
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85em; margin-top: 6px; padding-top: 6px; border-top: 1px solid #21262d;">
+                        <span style="color: #8b949e;">
+                            成交量 <span style="color: #c9d1d9;">${Math.round(stock.volume / 1000).toLocaleString()} 張</span>
+                            &nbsp;|&nbsp; 5日均量比
+                            <span style="color: ${stock.vol_ratio >= 1.5 ? '#ff7b72' : stock.vol_ratio >= 1.0 ? '#e3b341' : '#8b949e'}; font-weight: bold;">
+                                ${stock.vol_ratio ? stock.vol_ratio.toFixed(2) : '-'}x
+                            </span>
+                        </span>
+                        <span style="color: #8b949e;">點擊查看走勢圖</span>
                     </div>
                 `;
                 listDiv.appendChild(card);
