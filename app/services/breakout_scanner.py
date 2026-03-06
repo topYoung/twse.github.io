@@ -3,6 +3,7 @@ import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 from .categories import TECH_STOCKS, TRAD_STOCKS, STOCK_SUB_CATEGORIES
 from .stock_data import get_yahoo_ticker
+from .yf_rate_limiter import fetch_stock_history
 from .indicators import compute_kd, compute_rsi, compute_macd, compute_bias, compute_bollinger, compute_multi_rsi, compute_macd_with_trend
 from .institutional_data import get_latest_institutional_data
 from .realtime_quotes import get_realtime_quotes
@@ -305,8 +306,8 @@ def get_breakout_stocks(force_refresh=False):
         
         # Use ThreadPool to scan fast
         try:
-            # 降低併發數以減少系統負載
-            with ThreadPoolExecutor(max_workers=20) as executor:
+            # 降低併發數以減少系統負載 (改為 5)
+            with ThreadPoolExecutor(max_workers=5) as executor:
                 # 傳入 intraday_data
                 futures = [executor.submit(check_breakout_v2, code, inst_data, intraday_data_map.get(code)) for code in all_stocks]
                 for future in futures:
@@ -380,9 +381,9 @@ def check_breakout_v2(stock_code, inst_data_map, intraday_data=None):
         inst_net = inst.get('total', 0)
         
         ticker_symbol = get_yahoo_ticker(stock_code)
-        ticker = yf.Ticker(ticker_symbol)
         
-        hist = ticker.history(period="6mo")
+        hist = fetch_stock_history(stock_code, ticker_symbol, period="6mo", interval="1d")
+        if hist.empty: return None
         
         # === 盤中時段整合即時數據 (使用批次獲取結果) ===
         if intraday_data:

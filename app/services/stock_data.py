@@ -3,6 +3,7 @@ import pandas as pd
 from typing import List, Dict
 from concurrent.futures import ThreadPoolExecutor
 from .categories import TECH_STOCKS, TRAD_STOCKS, STOCK_SUB_CATEGORIES, DELISTED_STOCKS
+from .yf_rate_limiter import fetch_stock_history
 import twstock
 import logging
 
@@ -140,11 +141,9 @@ def process_stock(stock_code):
     """
     try:
         ticker_symbol = get_yahoo_ticker(stock_code)
-        ticker = yf.Ticker(ticker_symbol)
-        # specific period=2mo to get enough data for MA20 or MA60
-        hist = ticker.history(period="3mo")
+        hist = fetch_stock_history(stock_code, ticker_symbol, period="3mo", interval="1d")
         
-        if len(hist) < 60:
+        if hist.empty or len(hist) < 60:
             return None
             
         current_price = hist['Close'].iloc[-1]
@@ -216,8 +215,8 @@ def get_filtered_stocks():
     all_stocks = list(set(TECH_STOCKS + TRAD_STOCKS + keys_from_map))
     all_stocks = [s for s in all_stocks if s not in DELISTED_STOCKS]
     
-    # Increase workers to speed up fetching
-    with ThreadPoolExecutor(max_workers=50) as executor:
+    # Increase workers to speed up fetching (改為 5 避免限流)
+    with ThreadPoolExecutor(max_workers=5) as executor:
         futures = [executor.submit(process_stock, code) for code in all_stocks]
         for future in futures:
             res = future.result()
@@ -242,23 +241,7 @@ def get_stock_history(stock_code, interval='1d'):
     
     try:
         ticker_symbol = get_yahoo_ticker(stock_code)
-        ticker = yf.Ticker(ticker_symbol)
-        
-        # Retry logic for rate limiting
-        max_retries = 3
-        hist = pd.DataFrame()
-        
-        for attempt in range(max_retries):
-            try:
-                hist = ticker.history(period=api_period, interval=api_interval)
-                if not hist.empty:
-                    break
-            except Exception as e:
-                # If it's the last attempt, don't sleep, just let it proceed to failures
-                if attempt < max_retries - 1:
-                    time.sleep(1.0 * (attempt + 1)) # Backoff: 1s, 2s
-                else:
-                    print(f"Failed to fetch history for {stock_code} after {max_retries} attempts: {e}")
+        hist = fetch_stock_history(stock_code, ticker_symbol, period=api_period, interval=api_interval, max_retries=3)
         
         if hist.empty:
              print(f"Warning: History is empty for {stock_code}")

@@ -211,8 +211,8 @@ def fetch_historical_data(investor_type: str, days: int = 90) -> Dict[str, List[
         return date_str, None
 
     # Use ThreadPoolExecutor for parallel fetching
-    # Limit workers to avoid overwhelming the server
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    # Limit workers to avoid overwhelming the server (改為 5)
+    with ThreadPoolExecutor(max_workers=5) as executor:
         future_to_date = {executor.submit(fetch_and_parse, d): d for d in dates_to_fetch}
         
         for future in as_completed(future_to_date):

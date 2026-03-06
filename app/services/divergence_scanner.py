@@ -153,8 +153,8 @@ def get_divergence_stocks(days: int = 5, min_net_buy: int = 100, max_price_chang
             return stock_info
         return None
 
-    # Use ThreadPool for price checks
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    # Use ThreadPool for price checks (limit max_workers=5 to avoid rate limit)
+    with ThreadPoolExecutor(max_workers=5) as executor:
         futures = [executor.submit(check_price_divergence, cand) for cand in candidates]
         for f in futures:
             res = f.result()

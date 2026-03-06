@@ -39,16 +39,13 @@ def get_macd_breakout_stocks() -> List[Dict[str, Any]]:
     import yfinance as yf
     from concurrent.futures import ThreadPoolExecutor
     from app.services.stock_data import get_yahoo_ticker
+    from app.services.yf_rate_limiter import fetch_stock_history
     
     def fetch_history(code: str):
         try:
             ticker_symbol = get_yahoo_ticker(code)
-            ticker = yf.Ticker(ticker_symbol)
-            df = ticker.history(period="3mo")
+            df = fetch_stock_history(code, ticker_symbol, period="3mo", interval="1d")
             if not df.empty and len(df) > 30:
-                # 確保時區與格式正確
-                if df.index.tz is not None:
-                    df.index = df.index.tz_localize(None)
                 return code, df
         except Exception:
             pass

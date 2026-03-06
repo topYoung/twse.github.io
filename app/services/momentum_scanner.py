@@ -3,6 +3,7 @@ import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 from .categories import TECH_STOCKS, TRAD_STOCKS, STOCK_SUB_CATEGORIES
 from .stock_data import get_yahoo_ticker
+from .yf_rate_limiter import fetch_stock_history
 from .institutional_data import get_latest_institutional_data
 from .realtime_quotes import get_realtime_quotes
 import threading
@@ -29,12 +30,11 @@ def check_consecutive_rise(stock_code, min_days=2):
     """
     try:
         ticker_symbol = get_yahoo_ticker(stock_code)
-        ticker = yf.Ticker(ticker_symbol)
         # 取這幾天的資料，多取一點以確保有足夠的歷史來計算連漲
         # 假設最大連漲不超過 20 天，取 1 個月應該夠
-        hist = ticker.history(period="1mo")
+        hist = fetch_stock_history(stock_code, ticker_symbol, period="1mo", interval="1d")
         
-        if len(hist) < min_days + 1:
+        if hist.empty or len(hist) < min_days + 1:
             return None
             
         # 取得最新收盤價
@@ -144,8 +144,8 @@ def get_momentum_stocks(min_days=2, force_refresh=False):
     
     results = []
     
-    # 多執行緒掃描
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    # 多執行緒掃描 (限制 max_workers=5 避免限流)
+    with ThreadPoolExecutor(max_workers=5) as executor:
         futures = [executor.submit(check_consecutive_rise, code, min_days) for code in all_stocks]
         for future in futures:
             res = future.result()
