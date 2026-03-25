@@ -3,7 +3,7 @@ from typing import List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor
 
 from app.services.stock_data import get_filtered_stocks, get_stock_history, get_stocks_realtime
-from app.services.indicators import compute_macd
+from app.services.indicators import compute_macd, compute_kd
 
 def get_macd_breakout_stocks() -> List[Dict[str, Any]]:
     """
@@ -165,7 +165,13 @@ def get_macd_breakout_stocks() -> List[Dict[str, Any]]:
             # 盤整期過濾：確保訊號出現前有一段橫盤整理
             consolidation = is_after_consolidation(close_series, hist, dif, close_latest)
 
-            if (is_green_shrinking or is_just_red) and is_converging and is_dif_near_zero and consolidation:
+            # === KD 低檔過濾 (新增) ===
+            k, d = compute_kd(df)
+            kd_low_base = False
+            if k is not None and d is not None and k <= 35 and d <= 35:
+                kd_low_base = True
+
+            if (is_green_shrinking or is_just_red) and is_converging and is_dif_near_zero and consolidation and kd_low_base:
                 
                 # 補充即時資訊 (現在直接依賴 df 最後一筆)
                 rt_price = close_latest
@@ -173,8 +179,8 @@ def get_macd_breakout_stocks() -> List[Dict[str, Any]]:
                 rt_volume = volume_latest
                 
                 # === 量能過濾 ===
-                # 1. 絕對量：今日成交量至少 200 張（200,000 股），排除冷門股
-                MIN_VOLUME_SHARES = 200_000  # 200 張
+                # 1. 絕對量：今日成交量至少 500 張（500,000 股），排除冷門股
+                MIN_VOLUME_SHARES = 500_000  # 500 張
                 if rt_volume < MIN_VOLUME_SHARES:
                     return None
                 
@@ -182,11 +188,16 @@ def get_macd_breakout_stocks() -> List[Dict[str, Any]]:
                 vol_5d_avg = float(df['Volume'].iloc[-6:-1].mean()) if len(df) >= 6 else float(rt_volume)
                 vol_ratio = (rt_volume / vol_5d_avg) if vol_5d_avg > 0 else 1.0
                 
+                # === 方案 A 新增加的「突破」與「量能」條件 ===
+                # 必須要有實體的價格突破 (漲幅大於 2.5%) 且量能要放大 (大於 5日均量的 1.5倍)
+                if rt_change < 2.5 or vol_ratio < 1.5:
+                    return None
+                
                 pattern_desc = ""
                 if is_just_red:
-                    pattern_desc = "🔴 剛翻紅 (黃金交叉)"
+                    pattern_desc = "🏆 剛翻紅 + 量價突破"
                 elif is_green_shrinking:
-                    pattern_desc = "🟢 綠柱縮短 (即將金叉)"
+                    pattern_desc = "🏆 綠縮短 + 量價突破"
                     
                 return {
                     'code': code,

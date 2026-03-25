@@ -463,6 +463,12 @@ def check_breakout_v2(stock_code, inst_data_map, intraday_data=None):
         # === 技術指標計算（加入多週期驗證）===
         # 基本指標
         k, d = compute_kd(hist)
+        
+        # === KD 低檔過濾 (新增) ===
+        # 要求 KD 都在 35 以下
+        if k is None or d is None or k > 35 or d > 35:
+            return None
+            
         rsi = compute_rsi(hist["Close"])
         macd_dif, macd_signal, macd_hist = compute_macd(hist["Close"])
         bias20 = compute_bias(hist["Close"], ma_period=20)
@@ -592,6 +598,32 @@ def check_breakout_v2(stock_code, inst_data_map, intraday_data=None):
         # 4. 下引線特徵
         if lower_shadow_info['has_lower_shadow']:
             diagnostics.append(f"🔨 下引線(比率{lower_shadow_info['shadow_ratio']}x)")
+
+        # 5. MACD 雙重確認 (方案 C)
+        # 判斷 MACD 是否符合剛翻紅或綠柱縮短 (類似 macd_scanner.py 的邏輯)
+        if len(hist) >= 3 and is_valid:
+            # 重新計算未平滑的 hist 以抓取最近三天的變化 (compute_macd 已回傳最新一天，如果需要前幾天我們自己算或從 hist 取)
+            # 這裡我們用手動算一個簡單版的 DIF/DEA
+            close_series = hist["Close"]
+            ema_fast = close_series.ewm(span=12, adjust=False).mean()
+            ema_slow = close_series.ewm(span=26, adjust=False).mean()
+            dif = ema_fast - ema_slow
+            dea = dif.ewm(span=9, adjust=False).mean()
+            full_hist = dif - dea
+            
+            h_latest = full_hist.iloc[-1]
+            h_prev = full_hist.iloc[-2]
+            
+            # 條件：剛翻紅 (昨天<=0，今天>0) 或是 綠柱縮短 (今天<0，昨天<0，且今天>昨天)
+            # 加上 DIF 貼近零軸的條件 (|DIF| / price < 0.2)
+            is_macd_starting = False
+            dif_latest = dif.iloc[-1]
+            if abs(dif_latest) / current_price < 0.2:
+                if (h_prev <= 0 and h_latest > 0) or (h_latest < 0 and h_latest > h_prev):
+                    is_macd_starting = True
+            
+            if is_macd_starting:
+                diagnostics.insert(0, "🏆 MACD+突破 雙重確認")
 
         # === 起漲模式判斷（新增）===
         # 1. 判斷位階
