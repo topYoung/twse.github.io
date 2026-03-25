@@ -52,10 +52,23 @@
    - **Username**: 輸入您的 `GitHub 帳號名稱`
    - **Password**: 貼上您剛剛複製的 **新 Token**（不是 GitHub 登入密碼喔！）
 
+### 方法 C：終端機一鍵強制寫入（最快，解決各種疑難雜症）
+
+如果方法 A 與 B 都失效，或是系統一直死記錯誤密碼、甚至當初是不小心把密碼寫死在 Remote URL 導致 `fetch`/`push` 一直出現 `Authentication failed` 失敗，請直接在終端機執行這段組合指令。
+
+**⚠️ 關鍵注意：執行前，請務必先把下方指令中的 `你的真實Token` 替換成剛剛您在 GitHub 複製的 `ghp_...` 開頭亂碼字串。千萬不要將「你的真實Token」這幾個中文字原封不動貼上去執行！**
+
+```bash
+# 請記得將 <YOUR_USERNAME>、<REPO_NAME> 以及 你的真實Token 換成自己的資訊
+git remote set-url origin https://github.com/<YOUR_USERNAME>/<REPO_NAME>.git && printf "protocol=https\nhost=github.com\nusername=<YOUR_USERNAME>\npassword=你的真實Token\n" | git credential-osxkeychain store && git fetch
+```
+
+執行後如果 `git fetch` 安靜地跑完或正常拉取進度，就代表成功將正確新密碼強制寫入 Mac 鑰匙圈了！
+
 ---
 
-> **附註：使用 Git 遠端 URL 寫死的情況**
-> 如果您當初是將 Token 寫死在 Git Remote URL 的話（不建議，因為較不安全），可以透過以下指令更新：
+> **附註：使用 Git 遠端 URL 寫死密碼的情況**
+> 如果您偏好直接將 Token 寫死在 Git 網址裡（較不安全，不推薦），指令如下：
 > ```bash
 > # 請將裡面的 Username, 新Token, 與 RepoName 換成你自己的
 > git remote set-url origin https://<YOUR_USERNAME>:<NEW_TOKEN>@github.com/<YOUR_USERNAME>/<REPO_NAME>.git
