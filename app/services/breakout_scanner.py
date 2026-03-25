@@ -464,9 +464,9 @@ def check_breakout_v2(stock_code, inst_data_map, intraday_data=None):
         # 基本指標
         k, d = compute_kd(hist)
         
-        # === KD 低檔過濾 (新增) ===
-        # 要求 KD 都在 35 以下
-        if k is None or d is None or k > 35 or d > 35:
+        # === KD 低檔過濾 (放寬修正) ===
+        # 起漲當天 K 值容易飆高因此不強制限制 K 值，僅限制慢線 D <= 40
+        if k is None or d is None or d > 40:
             return None
             
         rsi = compute_rsi(hist["Close"])

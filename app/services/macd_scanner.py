@@ -165,10 +165,11 @@ def get_macd_breakout_stocks() -> List[Dict[str, Any]]:
             # 盤整期過濾：確保訊號出現前有一段橫盤整理
             consolidation = is_after_consolidation(close_series, hist, dif, close_latest)
 
-            # === KD 低檔過濾 (新增) ===
+            # === KD 低檔過濾 (放寬修正) ===
             k, d = compute_kd(df)
             kd_low_base = False
-            if k is not None and d is not None and k <= 35 and d <= 35:
+            # 起漲當天 K 值容易飆高因此不強制限制 K 值，僅限制慢線 D <= 40
+            if k is not None and d is not None and d <= 40:
                 kd_low_base = True
 
             if (is_green_shrinking or is_just_red) and is_converging and is_dif_near_zero and consolidation and kd_low_base:
