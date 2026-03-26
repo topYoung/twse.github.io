@@ -208,3 +208,11 @@ async def api_twse_ex_dividend(days: int = 30):
     """
     return fetch_ex_dividend_stocks(days)
 
+
+@app.get("/api/trend-radar-stocks")
+async def api_trend_radar_stocks(force_refresh: bool = False):
+    """
+    Get trend & momentum radar stocks (Potential Breakout & Strong Momentum)
+    """
+    from app.services.trend_radar import get_trend_radar_stocks
+    return get_trend_radar_stocks(force_refresh)

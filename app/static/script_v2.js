@@ -2323,3 +2323,133 @@ function openMacdBreakoutModal() {
 function closeMacdBreakoutModal() {
     document.getElementById('macd-breakout-modal').classList.add('hidden');
 }
+
+// --- 動能趨勢雷達 (Trend & Momentum Radar) ---
+let currentRadarTab = 'potential';
+
+function openTrendRadarModal() {
+    document.getElementById('trend-radar-modal').classList.remove('hidden');
+    fetchTrendRadarStocks(false);
+}
+
+function closeTrendRadarModal() {
+    document.getElementById('trend-radar-modal').classList.add('hidden');
+}
+
+function switchRadarTab(tabName) {
+    currentRadarTab = tabName;
+    document.querySelectorAll('.radar-tab').forEach(t => {
+        t.style.color = '#8b949e';
+        t.style.borderBottom = 'none';
+        t.classList.remove('active');
+    });
+    
+    const activeTab = document.getElementById('tab-' + tabName);
+    activeTab.classList.add('active');
+    activeTab.style.color = '#58a6ff';
+    activeTab.style.borderBottom = '2px solid #58a6ff';
+    
+    if (tabName === 'potential') {
+        document.getElementById('radar-potential-container').classList.remove('hidden');
+        document.getElementById('radar-strong-container').classList.add('hidden');
+    } else {
+        document.getElementById('radar-potential-container').classList.add('hidden');
+        document.getElementById('radar-strong-container').classList.remove('hidden');
+    }
+}
+
+async function fetchTrendRadarStocks(forceRefresh = false) {
+    const loading = document.getElementById('trend-radar-loading');
+    const potentialList = document.getElementById('trend-radar-potential-list');
+    const strongList = document.getElementById('trend-radar-strong-list');
+    
+    potentialList.innerHTML = '';
+    strongList.innerHTML = '';
+    loading.classList.remove('hidden');
+    
+    try {
+        const response = await fetch('/api/trend-radar-stocks' + (forceRefresh ? '?force_refresh=true' : ''));
+        const result = await response.json();
+        
+        loading.classList.add('hidden');
+        
+        if (result.status === 'success') {
+            const data = result.data;
+            if (data.potential.length === 0) {
+                potentialList.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #8b949e; padding: 20px;">目前沒有符合潛龍伏淵條件的股票。</div>';
+            } else {
+                data.potential.forEach(stock => {
+                    potentialList.appendChild(createTrendRadarCard(stock, 'potential'));
+                });
+            }
+            
+            if (data.strong.length === 0) {
+                strongList.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #8b949e; padding: 20px;">目前沒有符合乘風破浪條件的股票。</div>';
+            } else {
+                data.strong.forEach(stock => {
+                    strongList.appendChild(createTrendRadarCard(stock, 'strong'));
+                });
+            }
+        } else {
+            throw new Error(result.error || '不明錯誤');
+        }
+    } catch (e) {
+        console.error('Error fetching trend radar:', e);
+        loading.classList.add('hidden');
+        potentialList.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #f85149; padding: 20px;">資料載入失敗，請重試。</div>';
+        strongList.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #f85149; padding: 20px;">資料載入失敗，請重試。</div>';
+    }
+}
+
+function createTrendRadarCard(stock, type) {
+    const card = document.createElement('div');
+    card.className = 'stock-card';
+    card.style.borderLeft = type === 'potential' ? '4px solid #58a6ff' : '4px solid #ff7b72';
+    
+    card.onclick = () => {
+        // closeTrendRadarModal(); // 保持 modal 在背景
+        openChart(stock.code, stock.name, '趨勢雷達');
+    };
+
+    const changeClass = stock.change_percent >= 0 ? 'up' : 'down';
+    const sign = stock.change_percent > 0 ? '+' : '';
+    
+    const fmtVol = (v) => {
+        if (!v) return '-';
+        if (v >= 1e4) return (v/1e4).toFixed(1) + '萬';
+        return Intl.NumberFormat().format(v);
+    };
+
+    card.innerHTML = `
+        <div class="card-header">
+            <div class="stock-identity">
+                <span class="stock-name">${stock.name}</span>
+                <span class="stock-code-small">${stock.code}</span>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <span class="badge ${stock.category === '其他' ? 'trad' : 'tech'}">${stock.category}</span>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="price-info">
+                 <div class="stock-price">${stock.price}</div>
+                 <div class="stock-change ${changeClass}">
+                      ${sign}${stock.change_percent}%
+                 </div>
+            </div>
+            <div style="margin-top: 10px; color: #e6edf3; font-weight: bold; background: rgba(56, 139, 253, 0.1); padding: 4px 8px; border-radius: 4px; font-size: 0.85em; display: inline-block;">
+                ${stock.reason || '動能點位'}
+            </div>
+            
+            <div class="breakout-stats" style="margin-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 0.85em; color: #8b949e;">
+                <div>成交量: <span style="color: #c9d1d9;">${fmtVol(stock.volume)}</span></div>
+                <div>三大法人: <span style="color: ${stock.inst_net > 0 ? '#da3633' : '#238636'};">${fmtVol(stock.inst_net)}</span></div>
+                <div>位階: <span style="color: #c9d1d9;">${stock.position_pct}%</span></div>
+                <div>RSI: <span style="color: #c9d1d9;">${stock.rsi || '-'}</span></div>
+                <div>KD: <span style="color: #c9d1d9;">${stock.kd_k||'-'}/${stock.kd_d||'-'}</span></div>
+                <div>MACD紅柱: <span style="color: ${(stock.macd_hist || 0) > 0 ? '#da3633' : '#238636'}">${stock.macd_hist||'-'}</span></div>
+            </div>
+        </div>
+    `;
+    return card;
+}

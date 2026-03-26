@@ -67,6 +67,10 @@
                     </div>
                     <div class="investor-quick-actions" style="display: flex; gap: 8px;">
                         <!-- 新增功能放在最右邊 -->
+                        <button class="investor-btn" onclick="openTrendRadarModal()"
+                            style="border: 1px solid #ff7b72; color: #ff7b72; font-weight: bold; background: rgba(255, 123, 114, 0.1);">
+                            <span class="icon">🔥</span> 動能趨勢雷達
+                        </button>
                         <button class="investor-btn" onclick="openIntradayModal()"
                             style="border: 1px solid #da3633; color: #da3633;">
                             <span class="icon">☀️</span> 分時強勢
@@ -565,6 +569,35 @@
             <div id="ex-dividend-loading" class="loading-spinner hidden">正在查詢證交所資料...</div>
             <div id="ex-dividend-list" class="stock-grid">
                 <!-- 列表將在這裡產生 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 動能趨勢雷達 Modal -->
+    <div id="trend-radar-modal" class="modal hidden">
+        <div class="modal-content investor-modal-content" style="max-width: 1100px;">
+            <div class="modal-header">
+                <h2>🔥 綜合動能趨勢雷達</h2>
+                <button class="close-modal-btn" onclick="closeTrendRadarModal()">✕</button>
+            </div>
+            
+            <!-- Tabs for Potential and Strong -->
+            <div class="radar-tabs" style="display: flex; gap: 10px; margin-bottom: 15px; border-bottom: 1px solid #30363d; padding-bottom: 10px;">
+                <button id="tab-potential" class="radar-tab active" onclick="switchRadarTab('potential')" style="background: transparent; border: none; color: #58a6ff; font-size: 1.1em; cursor: pointer; padding: 5px 10px; font-weight: bold; border-bottom: 2px solid #58a6ff;">🎯 潛龍伏淵 (準備發動)</button>
+                <button id="tab-strong" class="radar-tab" onclick="switchRadarTab('strong')" style="background: transparent; border: none; color: #8b949e; font-size: 1.1em; cursor: pointer; padding: 5px 10px; font-weight: bold;">🚀 乘風破浪 (強勢續航)</button>
+            </div>
+            
+            <div id="trend-radar-loading" class="loading-spinner hidden">正在掃描全市場股票，請稍候...(約需 3~5 分鐘)</div>
+            
+            <!-- Lists -->
+            <div id="radar-potential-container">
+                <p style="color: #8b949e; font-size: 0.9em; margin-bottom: 10px;">低基期或剛回測支撐、籌碼/量能剛發動的潛力標的。</p>
+                <div id="trend-radar-potential-list" class="stock-grid"></div>
+            </div>
+            
+            <div id="radar-strong-container" class="hidden">
+                <p style="color: #8b949e; font-size: 0.9em; margin-bottom: 10px;">均線多頭排列、量價俱佳的主升段強勢標的。</p>
+                <div id="trend-radar-strong-list" class="stock-grid"></div>
             </div>
         </div>
     </div>
