@@ -344,6 +344,10 @@ def get_breakout_stocks(force_refresh=False):
         # Sort
         results.sort(key=lambda x: x['change_percent'], reverse=True)
 
+        # 套用進階過濾 (高槓桿/高本益比/流動性/弱勢)
+        from app.services.advanced_filters import filter_stocks
+        results = filter_stocks(results)
+
         
         final_output = {
             "stocks": results,

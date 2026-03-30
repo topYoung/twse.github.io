@@ -236,5 +236,9 @@ def get_macd_breakout_stocks() -> List[Dict[str, Any]]:
     # 優先排序：先按照剛翻紅排前面，然後按照漲幅排序
     breakout_candidates.sort(key=lambda x: (not x['is_just_red'], -x['change_percent']))
     
+    # 套用進階過濾 (高槓桿/高本益比/流動性/弱勢)
+    from app.services.advanced_filters import filter_stocks
+    breakout_candidates = filter_stocks(breakout_candidates)
+    
     return breakout_candidates
 

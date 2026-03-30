@@ -61,6 +61,11 @@ def get_trend_radar_stocks(force_refresh=False):
     potential_results.sort(key=lambda x: x['rsi'] or 0)
     strong_results.sort(key=lambda x: x['rsi'] or 0, reverse=True)
 
+    # 套用進階過濾 (高槓桿/高本益比/流動性/弱勢)
+    from app.services.advanced_filters import filter_stocks
+    potential_results = filter_stocks(potential_results)
+    strong_results = filter_stocks(strong_results)
+
     final_output = {
         "status": "success",
         "data": {
