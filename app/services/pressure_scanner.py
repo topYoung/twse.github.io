@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from .stock_data import get_yahoo_ticker
 from .yf_rate_limiter import fetch_stock_history
 from .institutional_data import get_latest_institutional_data
-from .institutional_data import get_latest_institutional_data
+from .categories import TECH_STOCKS, TRAD_STOCKS, STOCK_SUB_CATEGORIES
 import threading
 import time
 from datetime import datetime
@@ -124,13 +124,13 @@ def check_pressure_reduction(stock_code, min_days=2):
             "code": stock_code,
             "name": stock_name,
             "category": category,
-            "price": round(current_price, 2),
-            "change": round(change, 2),
-            "change_percent": round(change_pct, 2),
+            "price": float(round(current_price, 2)),
+            "change": float(round(change, 2)),
+            "change_percent": float(round(change_pct, 2)),
             "volume": int(hist['Volume'].iloc[-1]),
-            "consecutive_drop_days": consecutive_drop_days,
-            "is_sharp_drop": is_sharp_drop if 'is_sharp_drop' in locals() else False,
-            "today_shadow_ratio": round(today_shadow_ratio * 100, 2),
+            "consecutive_drop_days": int(consecutive_drop_days),
+            "is_sharp_drop": bool(is_sharp_drop if 'is_sharp_drop' in locals() else False),
+            "today_shadow_ratio": float(round(today_shadow_ratio * 100, 2)),
             "tags": tags
         }
 
