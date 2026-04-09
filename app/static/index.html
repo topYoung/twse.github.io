@@ -170,10 +170,16 @@
                 <span>🔍 綜合篩選 (多策略交集)</span>
                 <span id="analysis-toggle-icon" style="font-size: 0.8em; color: #8b949e;">▼</span>
             </h3>
-            <button id="analysis-btn" class="investor-btn" onclick="event.stopPropagation(); runComprehensiveAnalysis()"
-                style="padding: 4px 12px; font-size: 0.9em; background: #1f6feb; border: none; color: white;">
-                開始分析
-            </button>
+            <div style="display: flex; gap: 10px;">
+                <button id="combo-suggest-btn" class="investor-btn" onclick="event.stopPropagation(); window.openComboSuggestionModal()"
+                    style="padding: 4px 12px; font-size: 0.9em; background: rgba(210, 153, 34, 0.15); border: 1px solid #d29922; color: #e3b341;">
+                    💡 策略組合建議
+                </button>
+                <button id="analysis-btn" class="investor-btn" onclick="event.stopPropagation(); runComprehensiveAnalysis()"
+                    style="padding: 4px 12px; font-size: 0.9em; background: #1f6feb; border: none; color: white;">
+                    開始分析
+                </button>
+            </div>
         </div>
 
         <div id="analysis-options" class="hidden"
@@ -213,6 +219,19 @@
             </label>
             <label class="checkbox-label">
                 <input type="checkbox" name="strategy" value="macd_breakout"> 🏆 星級雙重確認
+            </label>
+            <!-- 以下為補齊的最新策略 -->
+            <label class="checkbox-label">
+                <input type="checkbox" name="strategy" value="pressure"> 🛡️ 賣壓減轉強
+            </label>
+            <label class="checkbox-label">
+                <input type="checkbox" name="strategy" value="trend_radar"> 🔥 動能趨勢雷達
+            </label>
+            <label class="checkbox-label">
+                <input type="checkbox" name="strategy" value="trust_ratio"> 🏆 投本比突擊
+            </label>
+            <label class="checkbox-label">
+                <input type="checkbox" name="strategy" value="dealer_buy"> 🏦 自營商作帳
             </label>
         </div>
     </div>
@@ -639,10 +658,58 @@
         </div>
     </div>
 
+    <!-- 篩選組合建議 Modal -->
+    <div id="combo-suggestion-modal" class="modal hidden" style="z-index: 10000;">
+        <div class="modal-content investor-modal-content" style="max-width: 800px; max-height: 85vh; overflow-y: auto;">
+            <div class="modal-header">
+                <h2>💡 多策略交集：選股黃金組合建議</h2>
+                <button class="close-modal-btn" onclick="window.closeComboSuggestionModal()">✕</button>
+            </div>
+            <div class="modal-body" style="padding: 20px; line-height: 1.6; color: #c9d1d9;">
+                <p style="color: #8b949e; margin-bottom: 20px;">
+                    ⭐ 實務建議：交集策略請勾選 <strong>2 ~ 3 個核心條件</strong> (通常為一個技術面 + 一個籌碼面) 即可，勾選太多容易導致出現「無符合股票」。
+                </p>
+                
+                <div style="background: #0d1117; padding: 15px; border-radius: 8px; border: 1px solid #30363d; margin-bottom: 15px;">
+                    <h3 style="color: #ff7b72; margin-top: 0;">組合 A：超級短線黑馬（技術突破 + 最佳籌碼）</h3>
+                    <p style="margin-bottom: 8px;">適合尋找盤面上最強、且有大資金背後推升的標的。</p>
+                    <ul style="list-style-type: none; padding-left: 0;">
+                        <li>✅ <strong>「🚀 起漲訊號」</strong> 或 <strong>「🔥 動能趨勢雷達」</strong></li>
+                        <li>✅ <strong>「🏆 星級雙重確認 (MACD)」</strong></li>
+                        <li>✅ <strong>「🏆 投本比突擊」</strong></li>
+                    </ul>
+                    <p style="color: #8b949e; font-size: 0.9em; margin-bottom: 0;"><strong>💡 為什麼這樣搭？</strong> 剛突破盤整區間，MACD 翻多，加上投信極高比例建倉，最強勢的波段候選。</p>
+                </div>
+
+                <div style="background: #0d1117; padding: 15px; border-radius: 8px; border: 1px solid #30363d; margin-bottom: 15px;">
+                    <h3 style="color: #58a6ff; margin-top: 0;">組合 B：底部反轉、籌碼沉澱（抄底抓起漲）</h3>
+                    <p style="margin-bottom: 8px;">適合買在風險極低、準備反轉向上的位置。</p>
+                    <ul style="list-style-type: none; padding-left: 0;">
+                        <li>✅ <strong>「🛡️ 賣壓減轉強」</strong> 或 <strong>「📉 法人接刀」</strong></li>
+                        <li>✅ <strong>「📈 低檔轉強」</strong> 或 <strong>「均線觀察」</strong></li>
+                        <li>✅ <strong>「🌟 3大法人同買」</strong> 或 <strong>「🏦 自營商作帳」</strong></li>
+                    </ul>
+                    <p style="color: #8b949e; font-size: 0.9em; margin-bottom: 0;"><strong>💡 為什麼這樣搭？</strong> 在賣壓減輕、站回均線之際，若有極短線法人偷偷搜刮籌碼，是波段最低買點。</p>
+                </div>
+
+                <div style="background: #0d1117; padding: 15px; border-radius: 8px; border: 1px solid #30363d;">
+                    <h3 style="color: #3fb950; margin-top: 0;">組合 C：多頭列車強勢上車（追擊主升段）</h3>
+                    <p style="margin-bottom: 8px;">適合在大多頭行情中，尋找繼續漲的飆股。</p>
+                    <ul style="list-style-type: none; padding-left: 0;">
+                        <li>✅ <strong>「🔥 連漲強勢」</strong></li>
+                        <li>✅ <strong>「☀️ 分時強勢」</strong></li>
+                        <li>✅ <strong>「🏆 投本比突擊」</strong></li>
+                    </ul>
+                    <p style="color: #8b949e; font-size: 0.9em; margin-bottom: 0;"><strong>💡 為什麼這樣搭？</strong> 股票已經在漲，如果投信還在持續用力加碼（高投本比），適合極短線跟隨。</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/alert-utils.js"></script>
     <script src="/static/watchlist.js"></script>
     <script src="/static/watchlist-ui.js"></script>
-    <script src="/static/script_v2.js?v=11"></script>
+    <script src="/static/script_v2.js?v=14"></script>
 </body>
 
 

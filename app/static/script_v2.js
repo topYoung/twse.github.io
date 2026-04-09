@@ -1312,7 +1312,11 @@ async function runComprehensiveAnalysis() {
         'dividend': '/api/high-dividend-stocks?min_yield=3.0&top_n=200',
         'divergence': '/api/divergence-stocks?days=5&min_net_buy=100&max_price_change=1.0',
         'intraday': '/api/intraday-stocks',
-        'macd_breakout': '/api/macd-breakout-stocks'
+        'macd_breakout': '/api/macd-breakout-stocks',
+        'pressure': '/api/pressure-stocks?min_days=2',
+        'trend_radar': '/api/trend-radar-stocks',
+        'trust_ratio': '/api/scanner/chips/trust-ratio',
+        'dealer_buy': '/api/scanner/chips/dealer-buy'
     };
 
     // Disable button
@@ -2584,4 +2588,22 @@ window.addEventListener('click', (event) => {
     
     const dealerBuyModal = document.getElementById('dealer-buy-modal');
     if (event.target === dealerBuyModal) closeDealerBuyModal();
+});
+
+
+window.openComboSuggestionModal = function() {
+    const modal = document.getElementById('combo-suggestion-modal');
+    if (modal) modal.classList.remove('hidden');
+};
+
+window.closeComboSuggestionModal = function() {
+    const modal = document.getElementById('combo-suggestion-modal');
+    if (modal) modal.classList.add('hidden');
+};
+
+window.addEventListener('click', (event) => {
+    const comboModal = document.getElementById('combo-suggestion-modal');
+    if (comboModal && event.target === comboModal) {
+        window.closeComboSuggestionModal();
+    }
 });
