@@ -122,6 +122,8 @@ async function fetchStocks() {
 const categoryFilterEl = document.getElementById('category-filter');
 let currentCategory = 'All';
 
+let allStocksCache = null; // 全市場快取
+
 function renderStocks(stocks) {
     loadingMsg.style.display = 'none';
     stockListEl.innerHTML = '';
@@ -130,6 +132,11 @@ function renderStocks(stocks) {
     if (stocks.length === 0) {
         stockListEl.innerHTML = '<div style="grid-column: 1/-1; text-align: center;">目前沒有符合條件的股票。</div>';
         return;
+    }
+
+    // 初次載入如果是大表，備份一下
+    if (!allStocksCache && stocks.length > 500) {
+        allStocksCache = stocks;
     }
 
     // 1. Extract Unique Categories
@@ -1283,6 +1290,8 @@ function toggleAnalysisPanel() {
     }
 }
 
+let lastComprehensiveResults = null; // 綜合分析暫存
+
 async function runComprehensiveAnalysis() {
     const checkboxes = document.querySelectorAll('input[name="strategy"]:checked');
     const selectedStrategies = Array.from(checkboxes).map(cb => cb.value);
@@ -1290,6 +1299,13 @@ async function runComprehensiveAnalysis() {
     if (selectedStrategies.length === 0) {
         alert('請至少選擇一種篩選策略');
         return;
+    }
+
+    const btn = document.getElementById('analysis-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.textContent = '分析中...';
     }
 
     // Show loading
@@ -1318,14 +1334,6 @@ async function runComprehensiveAnalysis() {
         'trust_ratio': '/api/scanner/chips/trust-ratio',
         'dealer_buy': '/api/scanner/chips/dealer-buy'
     };
-
-    // Disable button
-    const btn = document.getElementById('analysis-btn');
-    if (btn) {
-        btn.disabled = true;
-        btn.style.opacity = '0.5';
-        btn.textContent = '分析中...';
-    }
 
     try {
         // Fetch All
@@ -1374,7 +1382,6 @@ async function runComprehensiveAnalysis() {
         });
 
         // Find Intersection
-        // A stock must be present in ALL selected result sets to be kept.
         const requiredCount = selectedStrategies.length;
         const finalStocks = [];
 
@@ -1384,23 +1391,76 @@ async function runComprehensiveAnalysis() {
             }
         });
 
+        // 存入快取
+        lastComprehensiveResults = finalStocks;
+
         // Render
         renderStocks(finalStocks);
 
         if (finalStocks.length === 0) {
-            stockListEl.innerHTML = '<div style="grid-column: 1/-1; text-align: center;">無符合「所有條件」的股票。試著減少勾選的條件？</div>';
+            stockListEl.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 20px;">無符合「所有條件」的股票。試著減少勾選的條件？</div>';
+        }
+
+        // 強制重設按鈕狀態
+        const safeBtn = document.getElementById('analysis-btn');
+        if (safeBtn) {
+            safeBtn.removeAttribute('disabled');
+            safeBtn.disabled = false;
+            safeBtn.style.opacity = '1';
+            safeBtn.textContent = '開始分析';
         }
 
     } catch (error) {
         console.error('Analysis error:', error);
+        loadingMsg.style.display = 'block';
         loadingMsg.textContent = '分析失敗，請檢查網路連線或稍後重試。';
-    } finally {
-        // Re-enable button
-        if (btn) {
-            btn.disabled = false;
-            btn.style.opacity = '1';
-            btn.textContent = '開始分析';
+        const safeBtn = document.getElementById('analysis-btn');
+        if (safeBtn) {
+            safeBtn.removeAttribute('disabled');
+            safeBtn.disabled = false;
+            safeBtn.style.opacity = '1';
+            safeBtn.textContent = '開始分析';
         }
+    } finally {
+        // Double check reset
+        setTimeout(() => {
+            const finalBtn = document.getElementById('analysis-btn');
+            if (finalBtn) {
+                finalBtn.removeAttribute('disabled');
+                finalBtn.disabled = false;
+                finalBtn.style.opacity = '1';
+                if (finalBtn.textContent.includes('分析中')) {
+                    finalBtn.textContent = '開始分析';
+                }
+            }
+        }, 500);
+    }
+}
+
+// 恢復全市場表
+window.restoreAllStocks = function() {
+    if (allStocksCache) {
+        renderStocks(allStocksCache);
+    } else {
+        // 如果沒有快取重新 fetch
+        const stockListEl = document.getElementById('stock-list');
+        const loadingMsg = document.getElementById('loading-msg');
+        stockListEl.innerHTML = '';
+        loadingMsg.style.display = 'block';
+        loadingMsg.textContent = '正在載入全市場資料...';
+        fetchStocks();
+    }
+}
+
+// 檢視上次分析結果
+window.showLastAnalysis = function() {
+    if (lastComprehensiveResults) {
+        renderStocks(lastComprehensiveResults);
+        if (lastComprehensiveResults.length === 0) {
+            document.getElementById('stock-list').innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 20px;">上次分析結果為空。</div>';
+        }
+    } else {
+        alert("尚無上次的分析結果，請先執行包含多策略交集的「綜合分析」。");
     }
 }
 

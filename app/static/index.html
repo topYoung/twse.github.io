@@ -171,6 +171,14 @@
                 <span id="analysis-toggle-icon" style="font-size: 0.8em; color: #8b949e;">▼</span>
             </h3>
             <div style="display: flex; gap: 10px;">
+                <button class="investor-btn" onclick="event.stopPropagation(); window.restoreAllStocks()"
+                    style="padding: 4px 12px; font-size: 0.9em; background: transparent; border: 1px solid #30363d; color: #c9d1d9;">
+                    🔄 恢復全市場
+                </button>
+                <button class="investor-btn" onclick="event.stopPropagation(); window.showLastAnalysis()"
+                    style="padding: 4px 12px; font-size: 0.9em; background: rgba(88, 166, 255, 0.1); border: 1px solid #58a6ff; color: #58a6ff;">
+                    👀 檢視上次結果
+                </button>
                 <button id="combo-suggest-btn" class="investor-btn" onclick="event.stopPropagation(); window.openComboSuggestionModal()"
                     style="padding: 4px 12px; font-size: 0.9em; background: rgba(210, 153, 34, 0.15); border: 1px solid #d29922; color: #e3b341;">
                     💡 策略組合建議
@@ -709,7 +717,7 @@
     <script src="/static/alert-utils.js"></script>
     <script src="/static/watchlist.js"></script>
     <script src="/static/watchlist-ui.js"></script>
-    <script src="/static/script_v2.js?v=14"></script>
+    <script src="/static/script_v2.js?v=17"></script>
 </body>
 
 
