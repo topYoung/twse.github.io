@@ -71,6 +71,15 @@
                             style="border: 1px solid #ff7b72; color: #ff7b72; font-weight: bold; background: rgba(255, 123, 114, 0.1);">
                             <span class="icon">🔥</span> 動能趨勢雷達
                         </button>
+                        <!-- 新增籌碼按鈕 -->
+                        <button class="investor-btn" onclick="openTrustRatioModal()"
+                            style="border: 1px solid #d29922; color: #d29922; font-weight: bold; background: rgba(210, 153, 34, 0.1);">
+                            <span class="icon">🏆</span> 投本比突擊
+                        </button>
+                        <button class="investor-btn" onclick="openDealerBuyModal()"
+                            style="border: 1px solid #ff7b72; color: #ff7b72; background: rgba(255, 123, 114, 0.05);">
+                            <span class="icon">🏦</span> 自營商作帳
+                        </button>
                         <button class="investor-btn" onclick="openIntradayModal()"
                             style="border: 1px solid #da3633; color: #da3633;">
                             <span class="icon">☀️</span> 分時強勢
@@ -598,6 +607,34 @@
             <div id="radar-strong-container" class="hidden">
                 <p style="color: #8b949e; font-size: 0.9em; margin-bottom: 10px;">均線多頭排列、量價俱佳的主升段強勢標的。</p>
                 <div id="trend-radar-strong-list" class="stock-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 投本比突擊 Modal -->
+    <div id="trust-ratio-modal" class="modal hidden">
+        <div class="modal-content investor-modal-content" style="max-width: 1000px;">
+            <div class="modal-header">
+                <h2>🏆 高投本比突擊 (投信大買 + 佔股本 > 0.1%)</h2>
+                <button class="close-modal-btn" onclick="closeTrustRatioModal()">✕</button>
+            </div>
+            <div id="trust-ratio-loading" class="loading-spinner hidden">正在跨市場掃描籌碼 (上市/上櫃)，可能需要數十秒...</div>
+            <div id="trust-ratio-list" class="stock-grid">
+                <!-- 列表將在這裡產生 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 自營商作帳 Modal -->
+    <div id="dealer-buy-modal" class="modal hidden">
+        <div class="modal-content investor-modal-content" style="max-width: 1000px;">
+            <div class="modal-header">
+                <h2>🏦 自營商作帳 (近期大量買超 > 500張)</h2>
+                <button class="close-modal-btn" onclick="closeDealerBuyModal()">✕</button>
+            </div>
+            <div id="dealer-buy-loading" class="loading-spinner hidden">正在跨市場掃描籌碼，請稍候...</div>
+            <div id="dealer-buy-list" class="stock-grid">
+                <!-- 列表將在這裡產生 -->
             </div>
         </div>
     </div>

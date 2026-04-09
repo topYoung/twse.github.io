@@ -216,3 +216,17 @@ async def api_trend_radar_stocks(force_refresh: bool = False):
     """
     from app.services.trend_radar import get_trend_radar_stocks
     return get_trend_radar_stocks(force_refresh)
+
+# --- Chips Scanner Endpoints ---
+
+@app.get("/api/scanner/chips/trust-ratio")
+async def api_scanner_trust_ratio():
+    """獲取投本比 (投信買超佔股本比例) 高的股票"""
+    from app.services.chips_scanner import scan_high_trust_ratio
+    return scan_high_trust_ratio()
+
+@app.get("/api/scanner/chips/dealer-buy")
+async def api_scanner_dealer_buy():
+    """獲取自營商近期大量買超的股票"""
+    from app.services.chips_scanner import scan_dealer_net_buy
+    return scan_dealer_net_buy()

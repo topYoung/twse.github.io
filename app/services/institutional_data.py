@@ -268,6 +268,67 @@ def get_investor_summary(investor_type: str, days: int = 30) -> Dict:
         'days': days
     }
 
+def fetch_tpex_daily(date_str: str) -> Optional[Dict]:
+    """獲取上櫃 (TPEx) 的三大法人買賣超資料"""
+    # 轉換西元年 20260408 -> 民國年 115/04/08
+    year = int(date_str[:4]) - 1911
+    month = date_str[4:6]
+    day = date_str[6:8]
+    roc_date = f"{year}/{month}/{day}"
+    
+    url = f"https://www.tpex.org.tw/web/stock/3insti/daily_trade/3itrade_hedge_result.php?l=zh-tw&o=json&se=EW&t=D&d={roc_date}"
+    cache_path = CACHE_DIR / f"tpex_{date_str}.json"
+    
+    if cache_path.exists():
+        try:
+            with open(cache_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            pass
+            
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        # 簡單驗證有資料
+        if 'tables' in data and len(data['tables']) > 0 and 'data' in data['tables'][0]:
+            with open(cache_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False)
+            return data
+    except Exception as e:
+        print(f"TPEx Fetch error for {date_str}: {e}")
+    return None
+
+def parse_tpex_data(raw_data: Dict) -> Dict[str, Dict]:
+    """解析 TPEx JSON 資料，回傳 {code: {foreign, trust, dealer, total}}"""
+    results = {}
+    if not raw_data or 'tables' not in raw_data or not raw_data['tables']:
+        return results
+        
+    table_data = raw_data['tables'][0].get('data', [])
+    for row in table_data:
+        try:
+            code = str(row[0]).strip()
+            # 如果不是 4 碼數字代碼，跳過
+            if not (code.isdigit() and len(code) == 4):
+                continue
+            # 欄位：[10:外資合計買賣超, 13:投信買賣超, 22:自營商合計買賣超]
+            foreign = int(row[10].replace(',', '')) if len(row) > 10 else 0
+            trust = int(row[13].replace(',', '')) if len(row) > 13 else 0
+            dealer = int(row[22].replace(',', '')) if len(row) > 22 else 0
+            
+            results[code] = {
+                'foreign': foreign,
+                'trust': trust,
+                'dealer': dealer,
+                'total': foreign + trust + dealer
+            }
+        except Exception:
+            continue
+    return results
+
 def get_latest_institutional_data() -> Dict[str, Dict]:
     """
     獲取最近一個交易日的所有法人買賣超資料
@@ -295,15 +356,25 @@ def get_latest_institutional_data() -> Dict[str, Dict]:
             raw = fetch_institutional_data(inv, current_date)
             if raw:
                 day_results[inv] = parse_institutional_data(raw)
+                
+        # 加上上櫃 TPEx 資料
+        tpex_raw = fetch_tpex_daily(current_date)
+        tpex_parsed = parse_tpex_data(tpex_raw) if tpex_raw else {}
         
-        if day_results:
-            # 只要有一個法人有資料就視為該日為最近交易日
+        if day_results or tpex_parsed:
+            # TWSE (上市) 整理
             for inv, stocks in day_results.items():
                 for s in stocks:
                     code = s['stock_code']
                     net = s['net']
                     combined_data[code][inv] = net
                     combined_data[code]['total'] += net
+                    
+            # TPEx (上櫃) 整理
+            for code, stats in tpex_parsed.items():
+                for inv in ['foreign', 'trust', 'dealer', 'total']:
+                    combined_data[code][inv] += stats[inv]
+                    
             found_data = True
             break
             

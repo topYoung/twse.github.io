@@ -2453,3 +2453,135 @@ function createTrendRadarCard(stock, type) {
     `;
     return card;
 }
+
+/* --- Chips Scanner UI (Trust Ratio & Dealer Buy) --- */
+async function openTrustRatioModal() {
+    const modal = document.getElementById('trust-ratio-modal');
+    const loading = document.getElementById('trust-ratio-loading');
+    const container = document.getElementById('trust-ratio-list');
+    
+    modal.classList.remove('hidden');
+    loading.classList.remove('hidden');
+    container.innerHTML = '';
+    
+    try {
+        const response = await fetch('/api/scanner/chips/trust-ratio');
+        const stocks = await response.json();
+        
+        loading.classList.add('hidden');
+        if (!stocks || stocks.length === 0) {
+            container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#8b949e;">今日無符合高投本比股票</div>';
+            return;
+        }
+        
+        stocks.forEach(stock => {
+            const card = document.createElement('div');
+            card.className = 'stock-card layout-stock-card';
+            card.onclick = () => openChart(stock.code, stock.name, stock.category || '投本比高');
+            
+            card.innerHTML = `
+                <div class="card-header">
+                    <div class="stock-identity">
+                        <span class="stock-name">${stock.name || stock.code}</span>
+                        <span class="stock-code-small">${stock.code}</span>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                         <span class="badge" style="background:#d29922;color:black;font-weight:bold;">投本比 ${stock.trust_ratio}%</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="layout-stats" style="grid-template-columns: 1fr 1fr;">
+                        <div class="layout-stat-item">
+                            <span class="stat-label">今日價格</span>
+                            <span class="stat-value" style="color:${stock.change >= 0 ? '#da3633' : '#238636'}">${stock.price || '--'}</span>
+                        </div>
+                        <div class="layout-stat-item">
+                            <span class="stat-label">投信買超</span>
+                            <span class="stat-value" style="color:#da3633;">+${stock.trust_net_buy} 張</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            container.appendChild(card);
+        });
+    } catch(err) {
+        console.error(err);
+        loading.classList.add('hidden');
+        container.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#f85149;">載入失敗</div>';
+    }
+}
+
+function closeTrustRatioModal() {
+    const modal = document.getElementById('trust-ratio-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+async function openDealerBuyModal() {
+    const modal = document.getElementById('dealer-buy-modal');
+    const loading = document.getElementById('dealer-buy-loading');
+    const container = document.getElementById('dealer-buy-list');
+    
+    modal.classList.remove('hidden');
+    loading.classList.remove('hidden');
+    container.innerHTML = '';
+    
+    try {
+        const response = await fetch('/api/scanner/chips/dealer-buy');
+        const stocks = await response.json();
+        
+        loading.classList.add('hidden');
+        if (!stocks || stocks.length === 0) {
+            container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#8b949e;">今日無自營商大買超股票</div>';
+            return;
+        }
+        
+        stocks.forEach(stock => {
+            const card = document.createElement('div');
+            card.className = 'stock-card layout-stock-card';
+            card.onclick = () => openChart(stock.code, stock.name, stock.category || '自營商買超');
+            
+            card.innerHTML = `
+                <div class="card-header">
+                    <div class="stock-identity">
+                        <span class="stock-name">${stock.name || stock.code}</span>
+                        <span class="stock-code-small">${stock.code}</span>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                         <span class="badge" style="background:#ff7b72;color:black;font-weight:bold;">買超 ${stock.dealer_net_buy}張</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="layout-stats" style="grid-template-columns: 1fr 1fr;">
+                        <div class="layout-stat-item">
+                            <span class="stat-label">今日價格</span>
+                            <span class="stat-value" style="color:${stock.change >= 0 ? '#da3633' : '#238636'}">${stock.price || '--'}</span>
+                        </div>
+                        <div class="layout-stat-item">
+                            <span class="stat-label">成交量</span>
+                            <span class="stat-value">${stock.volume} 張</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            container.appendChild(card);
+        });
+    } catch(err) {
+        console.error(err);
+        loading.classList.add('hidden');
+        container.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#f85149;">載入失敗</div>';
+    }
+}
+
+function closeDealerBuyModal() {
+    const modal = document.getElementById('dealer-buy-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+// Ensure modals close when clicked outside
+window.addEventListener('click', (event) => {
+    const trustRatioModal = document.getElementById('trust-ratio-modal');
+    if (event.target === trustRatioModal) closeTrustRatioModal();
+    
+    const dealerBuyModal = document.getElementById('dealer-buy-modal');
+    if (event.target === dealerBuyModal) closeDealerBuyModal();
+});
