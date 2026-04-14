@@ -140,14 +140,29 @@ def check_trend_radar(stock_code, inst_data_map):
         is_potential = False
         potential_reason = []
         
+        # 1. 計算連漲天數
+        consecutive_rise_days = 0
+        for i in range(len(hist) - 1, 0, -1):
+            if float(hist.iloc[i]['Close']) > float(hist.iloc[i-1]['Close']):
+                consecutive_rise_days += 1
+            else:
+                break
+                
+        # 2. 法人動態判斷 (偷偷佈局：任一法人買超 > 0)
+        inst_foreign = inst.get('foreign', 0)
+        inst_trust = inst.get('trust', 0)
+        inst_dealer = inst.get('dealer', 0)
+        cond_sneaky_inst = (inst_foreign > 0 or inst_trust > 0 or inst_dealer > 0)
+        
         cond_level_safe = position_pct <= 0.40 or (current_price >= ma20 and prev_close < ma20) or (abs(current_price - ma20) / ma20 < 0.02)
-        cond_macd_kd = macd_starting and (d is not None and d <= 40)
-        cond_support = (inst_net > 0 or vol_increase)
+        cond_not_overbought = (consecutive_rise_days <= 3)
+        cond_macd_kd_rsi = macd_starting and (d is not None and d <= 40) and (rsi is not None and 40 <= rsi <= 75)
+        cond_support = cond_sneaky_inst and vol_increase
         cond_k_shape = is_red_k or has_lower_shadow
         
-        if cond_level_safe and cond_macd_kd and cond_support and cond_k_shape:
+        if cond_level_safe and cond_not_overbought and cond_macd_kd_rsi and cond_support and cond_k_shape:
             is_potential = True
-            potential_reason.append("低檔起漲 / MACD轉佳")
+            potential_reason.append("低檔起漲 / 法人佈局")
 
         # 🚀 乘風破浪 (Strong Momentum)
         is_strong = False
