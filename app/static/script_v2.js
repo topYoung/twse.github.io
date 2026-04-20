@@ -912,56 +912,93 @@ function createBreakoutCard(stock) {
         return String(n);
     };
 
-    const kdText = (stock.kd_d_value != null) ? `D ${stock.kd_d_value}` : '-';
-    const macdText = (stock.macd && stock.macd.hist != null)
-        ? `H ${stock.macd.hist}`
+    const signalType = stock.signal_type || '-';
+    const signalDesc = stock.signal_desc || '';
+
+    // 布林數據
+    const bb = stock.bollinger || {};
+    const bbText = bb.percent_b != null
+        ? `%B:${bb.percent_b}% BBW:${bb.bbw}% EMA:${bb.bbw_ema}%`
         : '-';
-    
-    // 訊號類型徽章
-    const signalBadgeClass = priority === 1 ? 'badge-gold' : 'badge-red';
-    const signalType = stock.signal_type || '其他訊號';
-    
-    // 營收狀態
-    const revenueStatus = stock.revenue_status || '';
+
+    // MACD 數據
+    const macd = stock.macd || {};
+    const macdText = macd.hist != null
+        ? `DIF:${macd.dif} DEA:${macd.dea} OSC:${macd.hist}`
+        : '-';
+
+    // KD
+    const kdText = stock.kd_d_value != null ? `D ${stock.kd_d_value}` : '-';
+
+    // 三大法人（最新一日，單位：股 → 張）
+    const inst = stock.institutional || {};
+    const fmtInst = (v) => {
+        if (v == null) return '-';
+        const lots = Math.round(v / 1000);
+        const sign = lots >= 0 ? '+' : '';
+        const color = lots >= 0 ? '#3fb950' : '#f85149';
+        return `<span style="color:${color}">${sign}${lots.toLocaleString()}張</span>`;
+    };
+
+    // 位階
+    const pos = stock.position || {};
+    const posLabel = pos.label || '-';
+    const posPct   = pos.pct   != null ? pos.pct + '%' : '-';
+
+    // 營收
+    const rev = stock.revenue || {};
+    const revText = (rev.mom != null || rev.yoy != null)
+        ? `MOM: ${rev.mom != null ? rev.mom + '%' : 'N/A'}  |  YOY: ${rev.yoy != null ? rev.yoy + '%' : 'N/A'}`
+        : null;
 
     card.innerHTML = `
         <div class="card-header">
-             <div class="stock-identity">
+            <div class="stock-identity">
                 <div class="breakout-title">
                     <span class="stock-name">${stock.name}</span>
                     <span class="stock-code-small">${stock.code}</span>
                 </div>
-                <!-- 訊號分類徽章（新增）-->
-                <div style="margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap;">
-                    <span class="badge ${signalBadgeClass}" style="background: ${priorityColors[priority]}; color: white; font-weight: 600; padding: 3px 8px; border-radius: 3px; font-size: 0.85em;">
+                <!-- 訊號徽章 + 位階 -->
+                <div style="margin-top: 6px; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                    <span style="background:${priorityColors[priority]}; color:#fff; font-weight:700;
+                                 padding:3px 10px; border-radius:4px; font-size:0.88em;">
                         ${signalType}
                     </span>
-                    <span style="background: rgba(56, 139, 253, 0.15); color: #79c0ff; border: 1px solid rgba(56, 139, 253, 0.3); padding: 3px 8px; border-radius: 3px; font-size: 0.80em;">
-                        優先級 ${priority}
-                    </span>
+                    <span style="font-size:0.82em;">${posLabel} ${posPct}</span>
                 </div>
-                <!-- 營收狀態（新增）-->
-                ${revenueStatus ? `<div style="margin-top: 4px; font-size: 0.80em; color: #79c0ff; background: rgba(56, 139, 253, 0.08); padding: 4px 6px; border-radius: 3px; border-left: 2px solid rgba(56, 139, 253, 0.3);">
-                    💡 ${revenueStatus}
-                </div>` : ''}
-                <div class="breakout-metrics" style="margin-top: 8px;">
+                <!-- 訊號描述 -->
+                ${signalDesc ? `<div style="margin-top:4px; font-size:0.77em; color:#8b949e;">${signalDesc}</div>` : ''}
+                <!-- 技術指標 -->
+                <div class="breakout-metrics" style="margin-top:8px;">
                     <div class="breakout-metric"><span class="metric-label">量比</span><span class="metric-value">${stock.vol_ratio}x</span></div>
-                    <div class="breakout-metric"><span class="metric-label">KD</span><span class="metric-value">${kdText}</span></div>
-                    <div class="breakout-metric"><span class="metric-label">MACD</span><span class="metric-value">${macdText}</span></div>
+                    <div class="breakout-metric"><span class="metric-label">KD D</span><span class="metric-value">${kdText}</span></div>
                     <div class="breakout-metric"><span class="metric-label">成交量</span><span class="metric-value">${fmtVol(stock.volume)}</span></div>
+                </div>
+                <!-- 布林 + MACD -->
+                <div style="margin-top:5px; font-size:0.77em; color:#6e7681; line-height:1.6;">
+                    <div>布林: ${bbText}</div>
+                    <div>MACD: ${macdText}</div>
+                </div>
+                <!-- 三大法人 -->
+                <div style="margin-top:6px; font-size:0.80em; display:grid; grid-template-columns:1fr 1fr 1fr; gap:4px;
+                            background:rgba(255,255,255,0.03); border-radius:4px; padding:5px 6px;">
+                    <div>外資 ${fmtInst(inst.foreign)}</div>
+                    <div>投信 ${fmtInst(inst.trust)}</div>
+                    <div>自營 ${fmtInst(inst.dealer)}</div>
                 </div>
             </div>
         </div>
         <div class="card-body">
             <div class="price-info">
-                 <div class="stock-price">${stock.price}</div>
-                 <div class="stock-change ${changeClass}">
-                      ${sign}${stock.change_percent}%
-                 </div>
+                <div class="stock-price">${stock.price}</div>
+                <div class="stock-change ${changeClass}">${sign}${stock.change_percent}%</div>
             </div>
-            <div style="margin-top: 10px; font-size: 0.9em; color: #8b949e;">
-                ${stock.pattern ? `<div style="padding: 6px; background: rgba(56, 139, 253, 0.08); border-radius: 3px; border-left: 2px solid #79c0ff;">📊 ${stock.pattern}</div>` : ''}
-            </div>
+            <!-- 營收資料 -->
+            ${revText ? `<div style="margin-top:8px; padding:5px 8px; background:rgba(35,134,54,0.1);
+                              border-left:3px solid #238636; border-radius:3px;
+                              font-size:0.80em; color:#3fb950;">
+                💰 ${revText}
+            </div>` : ''}
         </div>
     `;
     return card;

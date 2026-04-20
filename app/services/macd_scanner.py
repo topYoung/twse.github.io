@@ -7,82 +7,23 @@ from app.services.indicators import compute_macd, compute_kd
 from app.services.revenue_service import get_revenue_map
 
 
-def classify_signal_type(df: pd.DataFrame, kd_d: float, dif_latest: float, hist_latest: float, hist_prev: float, 
-                         rt_change: float, vol_ratio: float, mom: float = None, yoy: float = None) -> tuple:
+def compute_bollinger(close_series: pd.Series, period: int = 20, std_mult: float = 2.0):
     """
-    根據多種條件分類訊號類型
-    返回: (signal_type, priority, revenue_status)
-    
-    優先級排序（越小越優先）：
-    1. 營收驅動 MOM > 40% (priority=1)
-    2. 底部起漲 (priority=2)  
-    3. 營收驅動 MOM 20-40% (priority=3)
-    4. 加速起漲 (priority=4)
-    5. 突破起漲 (priority=5)
+    計算布林通道相關指標
+    返回: (bbw, bbw_ema3, percent_b) 皆為 pd.Series
+    - bbw: 布林帶寬 (upper-lower)/middle * 100
+    - bbw_ema3: BBW 的 3 日 EMA
+    - percent_b: %B = (close - lower) / (upper - lower) * 100
     """
-    signal_types = []
-    
-    # 計算連漲天數
-    consecutive_up_days = 0
-    if len(df) >= 3:
-        for i in range(-2, -4, -1):  # 最後2天
-            if i >= -len(df):
-                if df['Close'].iloc[i] > df['Close'].iloc[i-1]:
-                    consecutive_up_days += 1
-                else:
-                    break
-    
-    # 判斷各類型訊號
-    results = []
-    
-    # 類型1: 營收驅動 (優先級最高)
-    if mom is not None and yoy is not None:
-        if mom > 40 or yoy > 30:
-            results.append({
-                'type': '💰 營收爆發',
-                'priority': 1,
-                'revenue_status': f"MOM: {mom:.1f}% | YOY: {yoy:.1f}% ⭐⭐⭐"
-            })
-        elif mom > 20 and yoy > 15:
-            results.append({
-                'type': '💰 營收驅動',
-                'priority': 3,
-                'revenue_status': f"MOM: {mom:.1f}% | YOY: {yoy:.1f}% ✅"
-            })
-    
-    # 類型2: 底部起漲 (KD < 50 + MACD轉折)
-    if kd_d < 50:
-        is_turning = (hist_latest > hist_prev > 0) or (hist_prev <= 0 < hist_latest)
-        if is_turning:
-            results.append({
-                'type': '🔴 底部起漲',
-                'priority': 2,
-                'revenue_status': f"KD D: {kd_d:.1f} | MACD轉折"
-            })
-    
-    # 類型3: 加速起漲 (連漲2天 + MACD正向擴大)
-    if consecutive_up_days >= 2:
-        if hist_latest > 0 and hist_latest > hist_prev:
-            results.append({
-                'type': '🟢 加速起漲',
-                'priority': 4,
-                'revenue_status': f"連漲{consecutive_up_days}天 | MACD擴大"
-            })
-    
-    # 類型4: 突破起漲 (漲≥4% + 量≥2x)
-    if rt_change >= 4.0 and vol_ratio >= 2.0:
-        results.append({
-            'type': '🟡 突破起漲',
-            'priority': 5,
-            'revenue_status': f"漲幅: {rt_change:.1f}% | 量比: {vol_ratio:.1f}x"
-        })
-    
-    # 回傳優先級最高的訊號類型
-    if results:
-        best = min(results, key=lambda x: x['priority'])
-        return best['type'], best['priority'], best['revenue_status']
-    
-    return '其他訊號', 99, ""
+    sma = close_series.rolling(period).mean()
+    std = close_series.rolling(period).std(ddof=0)
+    upper = sma + std_mult * std
+    lower = sma - std_mult * std
+    bbw = (upper - lower) / sma * 100
+    bbw_ema3 = bbw.ewm(span=3, adjust=False).mean()
+    bb_range = upper - lower
+    percent_b = ((close_series - lower) / bb_range * 100).where(bb_range > 0)
+    return bbw, bbw_ema3, percent_b
 
 
 def is_after_consolidation(close_series: pd.Series, hist: pd.Series, dif: pd.Series, close_latest: float, rt_change: float = None) -> bool:
@@ -195,9 +136,12 @@ def get_macd_breakout_stocks() -> List[Dict[str, Any]]:
                 pass
     
     breakout_candidates = []
-    
-    # 先取得營收數據（含月營收增率 MOM 和年營收增率 YOY）
+
+    # 批次載入營收、法人數據（只載一次，避免重複 I/O）
     revenue_map = get_revenue_map()
+
+    from app.services.institutional_data import get_latest_institutional_data
+    inst_map = get_latest_institutional_data()   # {code: {foreign, trust, dealer, total}}
     
     # 定義判斷條件常數
     # DIF 和 DEA 差異小於價格的多少比例視為「差距小」
@@ -205,155 +149,159 @@ def get_macd_breakout_stocks() -> List[Dict[str, Any]]:
     # 我們以 hist 絕對值與收盤價比例小於 0.005 (0.5%) 作為一組參考，或是 hist 的變化趨勢
 
     def process_stock(code: str, df: pd.DataFrame) -> Dict[str, Any]:
-        """處理單檔股票的技術指標計算與判斷"""
+        """以布林帶寬 + MACD 判斷起漲訊號"""
         try:
             if df is None or df.empty or len(df) < 35:
                 return None
-            
-            # 確保資料為時間序列且有收盤價
             if 'Close' not in df.columns:
                 return None
-                
+
             close_series = df['Close']
-            
-            # 使用我們提供的指標模組計算 MACD
-            # 因為我們要看歷史走勢，需要算整條序列的 MACD，所以自己算一下 vector 版本的
-            fast = 12
-            slow = 26
-            signal = 9
-            
-            ema_fast = close_series.ewm(span=fast, adjust=False).mean()
-            ema_slow = close_series.ewm(span=slow, adjust=False).mean()
-            dif = ema_fast - ema_slow
-            dea = dif.ewm(span=signal, adjust=False).mean()
-            hist = dif - dea
-            
-            # 取出近三日的 MACD 柱狀體與價格
-            hist_latest = hist.iloc[-1]
-            hist_prev = hist.iloc[-2]
-            hist_prev2 = hist.iloc[-3]
-            
-            dif_latest = dif.iloc[-1]
-            dea_latest = dea.iloc[-1]
-            close_latest = close_series.iloc[-1]
-            
-            if pd.isna(hist_latest) or pd.isna(hist_prev) or close_latest == 0:
+            close_latest = float(close_series.iloc[-1])
+            if close_latest == 0:
                 return None
-                
-            # 計算前幾日的量縮或價格狀況
-            volume_latest = df['Volume'].iloc[-1] if 'Volume' in df.columns else 0
-            
-            # 判斷邏輯（寬鬆版）
-            # 情境 A：綠柱縮短，即將金叉 (hist_prev < 0 且 hist_latest < 0 且 hist_latest > hist_prev)
-            # 情境 B：剛翻紅，確認金叉 (hist_prev <= 0 且 hist_latest > 0)
-            # 情境 C：MACD 為正且擴大（走強行情）
-            
-            is_green_shrinking = (hist_latest < 0) and (hist_latest > hist_prev) 
-            is_just_red = (hist_prev <= 0) and (hist_latest > 0)
-            is_macd_positive_expanding = (hist_latest > 0) and (hist_latest > hist_prev)
-            
-            # 放寬收斂條件：兩線差距不超過目前股價的一定比例 (例如 10% 以內算合理範圍，因為 DIF/DEA 數值可能較大)
-            # 也可以直接看 hist 絕對值是否夠小，代表兩線接近
-            is_converging = abs(hist_latest) / close_latest < 0.05
-            
-            # 放寬條件：DIF 不要離 0 太遠 (例如 |DIF| < price * 0.2)
-            is_dif_near_zero = abs(dif_latest) / close_latest < 0.2
 
-            # 盤整期過濾：確保訊號出現前有一段橫盤整理
-            # 注意：傳入 rt_change 以支持動態調整（高振幅模式）
-            consolidation = is_after_consolidation(close_series, hist, dif, close_latest, rt_change=rt_change)
+            # === 布林通道 ===
+            bbw, bbw_ema3, percent_b = compute_bollinger(close_series)
+            bbw_latest    = bbw.iloc[-1]
+            bbw_prev      = bbw.iloc[-2]
+            bbw_ema_latest= bbw_ema3.iloc[-1]
+            pb_latest     = percent_b.iloc[-1]   # %B 最新值
 
-            # === KD 過濾（寬鬆版：D <= 80 以容納更多走強股票）===
-            k, d = compute_kd(df)
-            kd_ok = False
-            
-            if k is not None and d is not None:
-                # 統一標準：D <= 80（包含超買情況）
-                kd_ok = (d <= 80)
+            if pd.isna(bbw_latest) or pd.isna(pb_latest):
+                return None
 
-            if (is_green_shrinking or is_just_red or is_macd_positive_expanding) and is_converging and is_dif_near_zero and consolidation and kd_ok:
-                
-                # 補充即時資訊 (現在直接依賴 df 最後一筆)
-                rt_price = close_latest
-                rt_change = (close_latest - df['Close'].iloc[-2]) / df['Close'].iloc[-2] * 100 if len(df) > 1 else 0.0
-                rt_volume = volume_latest
-                
-                # === 量能過濾 ===
-                # 1. 絕對量：今日成交量至少 500 張（500,000 股），排除冷門股
-                MIN_VOLUME_SHARES = 500_000  # 500 張
-                if rt_volume < MIN_VOLUME_SHARES:
-                    return None
-                
-                # 2. 計算 5 日均量比，與截圖 VOL 5T 對應
-                vol_5d_avg = float(df['Volume'].iloc[-6:-1].mean()) if len(df) >= 6 else float(rt_volume)
-                vol_ratio = (rt_volume / vol_5d_avg) if vol_5d_avg > 0 else 1.0
-                
-                # === 方案 A 新增加的「突破」與「量能」條件 ===
-                # 分層判斷：根據漲幅動態調整量價條件
-                if rt_change >= 5.0:
-                    # 高振幅模式：放寬量價要求（漲停或大漲情景）
-                    price_breakout_ok = (rt_change >= 4.0)  # 漲幅 >= 4%
-                    volume_breakout_ok = (vol_ratio >= 1.2)  # 量能 >= 1.2x
-                else:
-                    # 正常模式：嚴格量價要求
-                    price_breakout_ok = (rt_change >= 2.5)  # 漲幅 >= 2.5%
-                    volume_breakout_ok = (vol_ratio >= 1.5)  # 量能 >= 1.5x
-                
-                if not (price_breakout_ok and volume_breakout_ok):
-                    return None
-                
-                # 取得營收數據
-                revenue_info = revenue_map.get(code, {})
-                mom = revenue_info.get('mom')  # 月營收增率
-                yoy = revenue_info.get('yoy')  # 年營收增率
-                
-                # 分類訊號類型
-                signal_type, priority, revenue_status = classify_signal_type(
-                    df, d, dif_latest, hist_latest, hist_prev, rt_change, vol_ratio, mom, yoy
-                )
-                
-                pattern_desc = ""
-                if is_just_red:
-                    pattern_desc = "🏆 剛翻紅 + 量價突破"
-                elif is_green_shrinking:
-                    pattern_desc = "🏆 綠縮短 + 量價突破"
-                elif is_macd_positive_expanding:
-                    pattern_desc = "🚀 MACD走強 + 量價突破"
-                
-                # 標記營收加速
-                if mom is not None and mom > 10:
-                    pattern_desc += " 💰 月增>10%"
-                if yoy is not None and yoy > 20:
-                    pattern_desc += " 📈 年增>20%"
-                    
-                return {
-                    'code': code,
-                    'name': stock_info_map[code]['name'],
-                    'price': float(rt_price),
-                    'change_percent': float(rt_change),
-                    'volume': int(rt_volume),
-                    'vol_5d_avg': int(vol_5d_avg),
-                    'vol_ratio': round(float(vol_ratio), 2),
-                    'signal_type': signal_type,
-                    'signal_priority': priority,
-                    'revenue_status': revenue_status,
-                    'macd': {
-                        'dif': float(round(dif_latest, 2)),
-                        'dea': float(round(dea_latest, 2)),
-                        'hist': float(round(hist_latest, 2))
-                    },
-                    'kd_d_value': round(float(d), 1),
-                    'pattern': pattern_desc,
-                    'is_just_red': bool(is_just_red),
-                    'revenue': {
-                        'mom': round(mom, 2) if mom is not None else None,  # 月營收增率 %
-                        'yoy': round(yoy, 2) if yoy is not None else None   # 年營收增率 %
-                    }
+            # === MACD ===
+            ema_fast = close_series.ewm(span=12, adjust=False).mean()
+            ema_slow = close_series.ewm(span=26, adjust=False).mean()
+            dif  = ema_fast - ema_slow
+            dea  = dif.ewm(span=9, adjust=False).mean()
+            hist = dif - dea
+
+            hist_latest = float(hist.iloc[-1])
+            hist_prev   = float(hist.iloc[-2])
+            dif_latest  = float(dif.iloc[-1])
+            dea_latest  = float(dea.iloc[-1])
+
+            if pd.isna(hist_latest) or pd.isna(hist_prev):
+                return None
+
+            # === 布林條件 ===
+            bb_expanding   = bbw_latest > bbw_prev                        # BBW 持續擴大
+            bb_above_ema   = bbw_latest > bbw_ema_latest                  # BBW 突破自身 EMA
+
+            # === MACD 條件 ===
+            macd_just_pos  = (hist_prev <= 0) and (hist_latest > 0)       # OSC 剛翻正
+            macd_converging= (hist_latest < 0 and                          # 負柱快速縮短
+                              hist_latest > hist_prev and
+                              abs(hist_latest) / close_latest < 0.008)    # 距離 0 < 0.8%
+            macd_expanding = (hist_latest > 0) and (hist_latest > hist_prev)  # 正柱擴大
+
+            # === 訊號分類 ===
+            # 已起漲：BBW 突破 EMA + %B > 80% + MACD 翻正或正向擴大
+            if (bb_expanding and bb_above_ema and
+                    (macd_just_pos or macd_expanding) and
+                    pb_latest > 80):
+                signal_type = '🚀 已起漲'
+                signal_priority = 1
+                signal_desc = (f"%B:{pb_latest:.0f}% | "
+                               f"BBW:{bbw_latest:.1f}%>EMA:{bbw_ema_latest:.1f}% | "
+                               f"{'MACD剛翻正' if macd_just_pos else 'MACD正向擴大'}")
+
+            # 即將起漲：BBW 開始擴大 + %B > 60% + MACD 即將翻正
+            elif (bb_expanding and
+                      (macd_converging or macd_just_pos) and
+                      pb_latest > 60):
+                signal_type = '⚡ 即將起漲'
+                signal_priority = 2
+                signal_desc = (f"%B:{pb_latest:.0f}% | "
+                               f"BBW擴大:{bbw_latest:.1f}% | "
+                               f"OSC收斂中:{hist_latest:.2f}")
+            else:
+                return None
+
+            # === 量能過濾 ===
+            volume_latest = int(df['Volume'].iloc[-1]) if 'Volume' in df.columns else 0
+            if volume_latest < 500_000:   # 最少 500 張
+                return None
+
+            vol_5d_avg = float(df['Volume'].iloc[-6:-1].mean()) if len(df) >= 6 else float(volume_latest)
+            vol_ratio  = (volume_latest / vol_5d_avg) if vol_5d_avg > 0 else 1.0
+            if vol_ratio < 1.2:           # 量比至少 1.2x
+                return None
+
+            rt_change = ((close_latest - float(df['Close'].iloc[-2])) /
+                         float(df['Close'].iloc[-2]) * 100) if len(df) > 1 else 0.0
+
+            # KD
+            k_val, d_val = compute_kd(df)
+            kd_d = round(float(d_val), 1) if d_val is not None else None
+
+            # 營收
+            revenue_info = revenue_map.get(code, {})
+            mom = revenue_info.get('mom')
+            yoy = revenue_info.get('yoy')
+
+            # 三大法人（最新一日）
+            inst = inst_map.get(code, {})
+            inst_foreign = inst.get('foreign', 0)   # 外資淨買超（股）
+            inst_trust   = inst.get('trust',   0)   # 投信淨買超
+            inst_dealer  = inst.get('dealer',  0)   # 自營商淨買超
+            inst_total   = inst.get('total',   0)   # 三大合計
+
+            # 高低檔位置（近 60 日）
+            window = df['Close'].iloc[-60:] if len(df) >= 60 else df['Close']
+            low60  = float(window.min())
+            high60 = float(window.max())
+            price_range = high60 - low60
+            position_pct = round((close_latest - low60) / price_range * 100, 1) if price_range > 0 else 50.0
+            if position_pct <= 35:
+                position_label = '🟢 低檔'
+            elif position_pct >= 65:
+                position_label = '🔴 高檔'
+            else:
+                position_label = '🟡 中間'
+
+            return {
+                'code': code,
+                'name': stock_info_map[code]['name'],
+                'price': float(close_latest),
+                'change_percent': float(rt_change),
+                'volume': int(volume_latest),
+                'vol_ratio': round(float(vol_ratio), 2),
+                'signal_type': signal_type,
+                'signal_priority': signal_priority,
+                'signal_desc': signal_desc,
+                'macd': {
+                    'dif':  float(round(dif_latest,  2)),
+                    'dea':  float(round(dea_latest,  2)),
+                    'hist': float(round(hist_latest, 2))
+                },
+                'bollinger': {
+                    'bbw':       round(float(bbw_latest),     2),
+                    'bbw_ema':   round(float(bbw_ema_latest), 2),
+                    'percent_b': round(float(pb_latest),      1)
+                },
+                'kd_d_value': kd_d,
+                'institutional': {
+                    'foreign': int(inst_foreign),
+                    'trust':   int(inst_trust),
+                    'dealer':  int(inst_dealer),
+                    'total':   int(inst_total)
+                },
+                'position': {
+                    'pct':   position_pct,
+                    'label': position_label,
+                    'low60': round(low60,  2),
+                    'high60': round(high60, 2)
+                },
+                'revenue': {
+                    'mom': round(mom, 2) if mom is not None else None,
+                    'yoy': round(yoy, 2) if yoy is not None else None
                 }
-            return None
-            
-        except Exception as e:
-            # 忽略個別股票的計算錯誤
+            }
+
+        except Exception:
             return None
 
     # 多線程加速處理
@@ -367,7 +315,7 @@ def get_macd_breakout_stocks() -> List[Dict[str, Any]]:
             if res:
                 breakout_candidates.append(res)
     
-    # 按訊號優先級排序 + 相同優先級內按漲幅排序
+    # 已起漲優先，相同優先級內按漲幅排序
     breakout_candidates.sort(key=lambda x: (x['signal_priority'], -x['change_percent']))
     
     # 套用進階過濾 (高槓桿/高本益比/流動性/弱勢)
