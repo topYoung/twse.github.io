@@ -35,8 +35,8 @@ def fetch_mis_index_data():
         }
         
         req = urllib.request.Request(url, headers=headers)
-        # 增加超時時間到 15 秒，並添加重試邏輯
-        with urllib.request.urlopen(req, context=context, timeout=15) as response:
+        # MIS timeout 設 4 秒，讓 yfinance fallback 有足夠時間
+        with urllib.request.urlopen(req, context=context, timeout=4) as response:
             data = response.read().decode('utf-8')
             json_data = json.loads(data)
             

@@ -95,10 +95,17 @@ async function fetchMarketIndex() {
         renderIndex(data);
     } catch (error) {
         console.error('Error fetching index:', error);
+        renderIndex({ price: 0, change: 0, percent_change: 0, error: '無法取得' });
     }
 }
 
 function renderIndex(data) {
+    if (!data || data.error || data.price === 0) {
+        indexPriceEl.textContent = '--';
+        indexChangeEl.textContent = '資料取得失敗';
+        indexChangeEl.className = 'index-change';
+        return;
+    }
     indexPriceEl.textContent = data.price.toLocaleString();
     const sign = data.change >= 0 ? '+' : '';
     const colorClass = data.change >= 0 ? 'up' : 'down';
