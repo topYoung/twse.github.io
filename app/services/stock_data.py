@@ -35,7 +35,8 @@ def fetch_mis_index_data():
         }
         
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, context=context, timeout=5) as response:
+        # 增加超時時間到 15 秒，並添加重試邏輯
+        with urllib.request.urlopen(req, context=context, timeout=15) as response:
             data = response.read().decode('utf-8')
             json_data = json.loads(data)
             
@@ -66,6 +67,12 @@ def fetch_mis_index_data():
                     "change": round(change, 2),
                     "percent_change": round(percent_change, 2)
                 }
+    except urllib.error.URLError as e:
+        print(f"Error fetching MIS index (Network): {e}")
+        return None
+    except json.JSONDecodeError as e:
+        print(f"Error fetching MIS index (JSON): {e}")
+        return None
     except Exception as e:
         print(f"Error fetching MIS index: {e}")
         return None

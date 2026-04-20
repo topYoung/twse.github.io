@@ -329,6 +329,71 @@ def parse_tpex_data(raw_data: Dict) -> Dict[str, Dict]:
             continue
     return results
 
+def get_5day_institutional_data(stock_code: str) -> Dict:
+    """
+    讀取最近 5 個交易日的快取檔案，統計特定股票的投信/外資買超情況。
+
+    Returns:
+        {
+            'trust_days': int,          # 投信買超天數 (net > 0)
+            'trust_increasing': bool,   # 投信買超張數是否持續放大 (最近3日遞增)
+            'trust_daily': list[int],   # 投信每日買賣超股數 (最近5日，舊→新)
+            'foreign_days': int,        # 外資買超天數
+            'foreign_increasing': bool, # 外資買超張數是否持續放大
+            'foreign_daily': list[int], # 外資每日買賣超股數
+        }
+    """
+    result = {
+        'trust_days': 0, 'trust_increasing': False, 'trust_daily': [],
+        'foreign_days': 0, 'foreign_increasing': False, 'foreign_daily': [],
+    }
+
+    def _find_last_n_cache_files(investor_type: str, n: int = 5) -> list:
+        """找最近 n 個有效快取檔（依日期降冪排序後取前 n 個）"""
+        pattern = f"{investor_type}_*.json"
+        files = sorted(CACHE_DIR.glob(pattern), reverse=True)
+        valid = []
+        for f in files:
+            # 檔名格式：{type}_YYYYMMDD.json
+            stem = f.stem  # e.g. "trust_20260415"
+            parts = stem.split('_')
+            if len(parts) == 2 and parts[1].isdigit() and len(parts[1]) == 8:
+                valid.append(f)
+                if len(valid) >= n:
+                    break
+        return list(reversed(valid))  # 由舊到新排列
+
+    for inv_type, key_prefix in [('trust', 'trust'), ('foreign', 'foreign')]:
+        files = _find_last_n_cache_files(inv_type, 5)
+        daily_nets = []
+        for cache_file in files:
+            try:
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    raw = json.load(f)
+                parsed = parse_institutional_data(raw)
+                net = 0
+                for row in parsed:
+                    if row.get('stock_code', '') == stock_code:
+                        net = row.get('net', 0)
+                        break
+                daily_nets.append(net)
+            except Exception:
+                daily_nets.append(0)
+
+        buy_days = sum(1 for v in daily_nets if v > 0)
+        # 持續放大：最後3日都 > 0 且逐日遞增
+        increasing = False
+        if len(daily_nets) >= 3:
+            last3 = daily_nets[-3:]
+            increasing = all(v > 0 for v in last3) and last3[0] < last3[1] < last3[2]
+
+        result[f'{key_prefix}_days'] = buy_days
+        result[f'{key_prefix}_increasing'] = increasing
+        result[f'{key_prefix}_daily'] = daily_nets
+
+    return result
+
+
 def get_latest_institutional_data() -> Dict[str, Dict]:
     """
     獲取最近一個交易日的所有法人買賣超資料

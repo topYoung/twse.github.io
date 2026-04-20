@@ -26,9 +26,60 @@ def compute_kd(df: pd.DataFrame, period: int = 9, smooth_k: int = 3, smooth_d: i
 
     k_last = k.iloc[-1]
     d_last = d.iloc[-1]
+    
+    # 確保是標量，不是 Series
+    if hasattr(k_last, 'item'):
+        k_last = k_last.item()
+    if hasattr(d_last, 'item'):
+        d_last = d_last.item()
+    
     if pd.isna(k_last) or pd.isna(d_last):
         return None, None
     return float(k_last), float(d_last)
+
+
+def compute_kd_series(df: pd.DataFrame, period: int = 9, smooth_k: int = 3, smooth_d: int = 3) -> tuple[pd.Series | None, pd.Series | None]:
+    """
+    回傳完整 K、D 時間序列（供金叉偵測使用）。
+    """
+    if df is None or df.empty or len(df) < period + 2:
+        return None, None
+    high_n = df["High"].rolling(window=period).max()
+    low_n = df["Low"].rolling(window=period).min()
+    denom = (high_n - low_n).replace(0, pd.NA)
+    rsv = ((df["Close"] - low_n) / denom) * 100
+    rsv = rsv.clip(lower=0, upper=100)
+    k = rsv.ewm(alpha=1 / smooth_k, adjust=False).mean()
+    d = k.ewm(alpha=1 / smooth_d, adjust=False).mean()
+    return k, d
+
+
+def detect_kd_golden_cross(df: pd.DataFrame, lookback: int = 5, kd_min: float = 40.0, kd_max: float = 60.0) -> bool:
+    """
+    偵測最近 lookback 日內是否發生 KD 黃金交叉，且交叉時 K、D 值落在 kd_min ~ kd_max 區間。
+    Returns:
+        True 若偵測到符合條件的金叉，否則 False
+    """
+    k_series, d_series = compute_kd_series(df)
+    if k_series is None or d_series is None:
+        return False
+
+    window_k = k_series.iloc[-lookback - 1:]
+    window_d = d_series.iloc[-lookback - 1:]
+
+    for i in range(1, len(window_k)):
+        k_prev, k_curr = float(window_k.iloc[i - 1]), float(window_k.iloc[i])
+        d_prev, d_curr = float(window_d.iloc[i - 1]), float(window_d.iloc[i])
+        if pd.isna(k_prev) or pd.isna(d_prev):
+            continue
+        # 金叉：K 由下往上穿越 D
+        if k_prev < d_prev and k_curr >= d_curr:
+            # 且穿越時 K、D 均在目標區間
+            cross_k = (k_curr + k_prev) / 2
+            cross_d = (d_curr + d_prev) / 2
+            if kd_min <= cross_k <= kd_max and kd_min <= cross_d <= kd_max:
+                return True
+    return False
 
 
 def compute_rsi(close: pd.Series, period: int = 14) -> float | None:

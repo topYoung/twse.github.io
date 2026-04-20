@@ -157,6 +157,11 @@
                             style="border: 1px solid #79c0ff; color: #79c0ff;">
                             <span class="icon">📅</span> 近月除息
                         </button>
+                        <!-- Theme Scanner Button -->
+                        <button class="investor-btn" onclick="openThemeScannerModal()"
+                            style="border: 1px solid #f0883e; color: #f0883e; font-weight: bold; background: rgba(240,136,62,0.1);">
+                            <span class="icon">🎯</span> 主題選股
+                        </button>
                     </div>
                 </div>
     </div>
@@ -713,6 +718,293 @@
             </div>
         </div>
     </div>
+
+    <!-- 主題選股 Modal -->
+    <div id="theme-scanner-modal" class="modal hidden">
+        <div class="modal-content investor-modal-content" style="max-width: 1200px;">
+            <div class="modal-header">
+                <h2>🎯 主題選股掃描器</h2>
+                <button class="close-modal-btn" onclick="closeThemeScannerModal()">✕</button>
+            </div>
+
+            <!-- 篩選列 -->
+            <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:12px 0 16px; border-bottom:1px solid #30363d; margin-bottom:16px;">
+                <div style="display:flex; gap:6px;">
+                    <button id="theme-btn-all" class="theme-filter-btn active-theme-btn" onclick="setThemeFilter('all')">全部主題</button>
+                    <button id="theme-btn-silicon_photonics" class="theme-filter-btn" onclick="setThemeFilter('silicon_photonics')">🔬 矽光子CPO</button>
+                    <button id="theme-btn-liquid_cooling" class="theme-filter-btn" onclick="setThemeFilter('liquid_cooling')">💧 液冷散熱</button>
+                    <button id="theme-btn-edge_ai" class="theme-filter-btn" onclick="setThemeFilter('edge_ai')">🤖 邊緣AI</button>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px; color:#8b949e; font-size:0.9em;">
+                    股本上限：
+                    <select id="theme-capital-select" style="background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:4px; padding:3px 8px;">
+                        <option value="20">20 億以下</option>
+                        <option value="30" selected>30 億以下</option>
+                        <option value="50">50 億以下</option>
+                        <option value="100">100 億以下</option>
+                        <option value="9999">不限</option>
+                    </select>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px; color:#8b949e; font-size:0.9em;">
+                    最低得分：
+                    <select id="theme-score-select" style="background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:4px; padding:3px 8px;">
+                        <option value="0" selected>不限</option>
+                        <option value="3">3分以上</option>
+                        <option value="5">5分以上</option>
+                        <option value="7">7分以上</option>
+                    </select>
+                </div>
+                <button onclick="loadThemeScanner(true)"
+                    style="background:#f0883e; color:#0d1117; border:none; border-radius:6px; padding:6px 16px; font-weight:bold; cursor:pointer;">
+                    ▶ 立即掃描
+                </button>
+            </div>
+
+            <!-- 條件說明列 -->
+            <div id="theme-legend" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; font-size:0.8em;">
+                <span style="color:#8b949e;">條件圖例：</span>
+                <span style="background:#1a2a1a; color:#3fb950; padding:2px 6px; border-radius:4px;">✅ 達標</span>
+                <span style="background:#2a1a1a; color:#f85149; padding:2px 6px; border-radius:4px;">❌ 未達</span>
+                <span style="background:rgba(240,136,62,0.15); color:#f0883e; padding:2px 6px; border-radius:4px;">⭐起漲訊號</span>
+                <span style="background:rgba(210,153,34,0.15); color:#d29922; padding:2px 6px; border-radius:4px;">🏆雙確認</span>
+                <span style="background:rgba(88,166,255,0.1); color:#58a6ff; padding:2px 6px; border-radius:4px;">📡雷達</span>
+                <span style="background:rgba(163,113,247,0.1); color:#a371f7; padding:2px 6px; border-radius:4px;">💼法人</span>
+            </div>
+
+            <div id="theme-scanner-loading" class="loading-spinner hidden">掃描中，請稍候（約30～60秒）...</div>
+            <div id="theme-scanner-content"></div>
+        </div>
+    </div>
+
+    <style>
+    .theme-filter-btn {
+        background: #21262d;
+        color: #8b949e;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: 5px 12px;
+        cursor: pointer;
+        font-size: 0.9em;
+        transition: all 0.15s;
+    }
+    .theme-filter-btn:hover { border-color: #58a6ff; color: #c9d1d9; }
+    .active-theme-btn { background: rgba(88,166,255,0.1) !important; color: #58a6ff !important; border-color: #58a6ff !important; }
+    .theme-card {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 14px 16px;
+        margin-bottom: 10px;
+        transition: border-color 0.2s;
+    }
+    .theme-card:hover { border-color: #58a6ff; }
+    .theme-card.has-launch { border-color: #f0883e; }
+    .theme-card.has-star { border-color: #d29922; }
+    .cond-badge {
+        display: inline-block;
+        font-size: 0.75em;
+        padding: 2px 6px;
+        border-radius: 4px;
+        margin: 2px;
+        font-weight: 500;
+    }
+    .cond-ok { background: #1a2a1a; color: #3fb950; }
+    .cond-fail { background: #21262d; color: #484f58; }
+    .badge-star { background: rgba(240,136,62,0.2); color: #f0883e; font-weight: bold; }
+    .badge-gold { background: rgba(210,153,34,0.2); color: #d29922; font-weight: bold; }
+    .badge-radar { background: rgba(88,166,255,0.15); color: #58a6ff; }
+    .badge-inst { background: rgba(163,113,247,0.15); color: #a371f7; }
+    .badge-ma60 { background: rgba(63,185,80,0.15); color: #3fb950; }
+    .theme-section-header {
+        color: #f0883e;
+        font-size: 1.1em;
+        font-weight: bold;
+        border-bottom: 1px solid #30363d;
+        padding-bottom: 8px;
+        margin: 20px 0 12px;
+    }
+    </style>
+
+    <script>
+    let _themeScannerCurrentTheme = 'all';
+
+    function openThemeScannerModal() {
+        document.getElementById('theme-scanner-modal').classList.remove('hidden');
+        loadThemeScanner(false);
+    }
+    function closeThemeScannerModal() {
+        document.getElementById('theme-scanner-modal').classList.add('hidden');
+    }
+
+    function setThemeFilter(t) {
+        _themeScannerCurrentTheme = t;
+        document.querySelectorAll('.theme-filter-btn').forEach(b => b.classList.remove('active-theme-btn'));
+        document.getElementById('theme-btn-' + t).classList.add('active-theme-btn');
+        renderThemeScannerFiltered();
+    }
+
+    let _themeScannerData = null;
+
+    function loadThemeScanner(forceRefresh) {
+        const maxCap = document.getElementById('theme-capital-select').value;
+        const minScore = document.getElementById('theme-score-select').value;
+        const loading = document.getElementById('theme-scanner-loading');
+        const content = document.getElementById('theme-scanner-content');
+
+        loading.classList.remove('hidden');
+        content.innerHTML = '';
+
+        const url = `/api/theme-scanner?theme=all&max_capital=${maxCap}&min_score=${minScore}&force_refresh=${forceRefresh ? 'true' : 'false'}`;
+        fetch(url)
+            .then(r => r.json())
+            .then(res => {
+                loading.classList.add('hidden');
+                if (res.status !== 'success') {
+                    content.innerHTML = '<p style="color:#f85149;">掃描失敗，請稍後再試。</p>';
+                    return;
+                }
+                _themeScannerData = res;
+                renderThemeScannerFiltered();
+            })
+            .catch(err => {
+                loading.classList.add('hidden');
+                content.innerHTML = `<p style="color:#f85149;">錯誤：${err}</p>`;
+            });
+    }
+
+    function renderThemeScannerFiltered() {
+        if (!_themeScannerData) return;
+        const content = document.getElementById('theme-scanner-content');
+        const minScore = parseInt(document.getElementById('theme-score-select').value) || 0;
+        const data = _themeScannerData.data;
+        const params = _themeScannerData.params || {};
+        const labels = params.theme_labels || {};
+        const descs = params.theme_descriptions || {};
+
+        const themeKeys = ['silicon_photonics', 'liquid_cooling', 'edge_ai'];
+        const icons = { silicon_photonics: '🔬', liquid_cooling: '💧', edge_ai: '🤖' };
+
+        let html = '';
+        let totalShown = 0;
+
+        for (const tk of themeKeys) {
+            if (_themeScannerCurrentTheme !== 'all' && _themeScannerCurrentTheme !== tk) continue;
+            const stocks = (data[tk] || []).filter(s => s.score >= minScore);
+            const label = labels[tk] || tk;
+            const desc = descs[tk] || '';
+            const icon = icons[tk] || '📌';
+
+            html += `<div class="theme-section-header">${icon} ${label}
+                <span style="color:#8b949e; font-size:0.8em; font-weight:normal; margin-left:8px;">${desc}</span>
+                <span style="color:#58a6ff; font-size:0.85em; font-weight:normal; margin-left:10px;">${stocks.length} 支</span>
+            </div>`;
+
+            if (stocks.length === 0) {
+                html += '<p style="color:#8b949e; font-size:0.9em; padding-left:8px;">目前無符合條件個股</p>';
+                continue;
+            }
+
+            totalShown += stocks.length;
+            for (const s of stocks) {
+                html += renderThemeCard(s);
+            }
+        }
+
+        if (totalShown === 0) {
+            html += '<p style="color:#8b949e; text-align:center; padding:30px;">目前無符合條件的主題個股，可調整篩選條件或點「立即掃描」更新資料。</p>';
+        }
+
+        const ts = _themeScannerData.last_update
+            ? new Date(_themeScannerData.last_update * 1000).toLocaleTimeString('zh-TW')
+            : '';
+        html += `<p style="color:#484f58; font-size:0.8em; text-align:right; margin-top:10px;">資料時間：${ts}</p>`;
+
+        content.innerHTML = html;
+    }
+
+    function renderThemeCard(s) {
+        const c = s.conditions || {};
+        const changeColor = (s.change_percent || 0) >= 0 ? '#3fb950' : '#f85149';
+        const changeSign = (s.change_percent || 0) >= 0 ? '+' : '';
+        const capitalStr = s.capital_b != null ? `${s.capital_b}億` : '未知';
+
+        // 特殊邊框
+        let cardClass = 'theme-card';
+        if (c.star_confirmed) cardClass += ' has-star';
+        else if (c.launch_signal) cardClass += ' has-launch';
+
+        // 徽章
+        let badgeHtml = '';
+        for (const b of (s.badges || [])) {
+            let cls = 'cond-badge ';
+            if (b.includes('雙確認')) cls += 'badge-gold';
+            else if (b.includes('起漲')) cls += 'badge-star';
+            else if (b.includes('雷達')) cls += 'badge-radar';
+            else if (b.includes('法人')) cls += 'badge-inst';
+            else if (b.includes('季線')) cls += 'badge-ma60';
+            else cls += 'cond-ok';
+            badgeHtml += `<span class="${cls}">${b}</span>`;
+        }
+
+        // 10條件
+        const condDefs = [
+            ['capital_ok', `股本≤${s.capital_b != null ? s.capital_b + '億' : '?'}`],
+            ['inst_5day', '法人5日買超'],
+            ['macd_cross', 'MACD金叉'],
+            ['kd_cross_mid', 'KD中段金叉'],
+            ['volume_ok', '量能突破1.5x'],
+            ['ma60_breakout', '突破季線'],
+            ['revenue_growth', '營收成長'],
+            ['trend_radar', '動能雷達'],
+            ['launch_signal', '⭐起漲訊號'],
+            ['star_confirmed', '🏆雙重確認'],
+        ];
+        let condHtml = '';
+        for (const [key, label] of condDefs) {
+            const ok = c[key];
+            condHtml += `<span class="cond-badge ${ok ? 'cond-ok' : 'cond-fail'}">${ok ? '✅' : '❌'} ${label}</span>`;
+        }
+
+        // 指標
+        const ind = s.indicators || {};
+        const rsiStr = ind.rsi != null ? `RSI ${ind.rsi}` : '';
+        const kdStr = (ind.kd_k != null && ind.kd_d != null) ? `K${ind.kd_k}/D${ind.kd_d}` : '';
+        const histStr = ind.macd_hist != null ? `MACD柱 ${ind.macd_hist}` : '';
+        const instDetail = s.inst_detail || {};
+
+        return `
+        <div class="${cardClass}" onclick="searchStock('${s.code}')">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
+                <div>
+                    <span style="color:#58a6ff; font-weight:bold; font-size:1.05em; cursor:pointer;">${s.name}</span>
+                    <span style="color:#8b949e; margin-left:6px; font-size:0.9em;">${s.code}</span>
+                    <span style="background:#21262d; color:#8b949e; font-size:0.8em; padding:1px 6px; border-radius:4px; margin-left:6px;">${s.theme_label || ''}</span>
+                    <div style="margin-top:4px;">${badgeHtml}</div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-size:1.2em; font-weight:bold; color:#c9d1d9;">$${s.price ?? '-'}</div>
+                    <div style="color:${changeColor}; font-size:0.95em;">${changeSign}${(s.change_percent ?? 0).toFixed(2)}%</div>
+                    <div style="color:#8b949e; font-size:0.8em;">股本 ${capitalStr}</div>
+                </div>
+            </div>
+            <div style="margin-top:8px; display:flex; gap:12px; flex-wrap:wrap; font-size:0.82em; color:#8b949e;">
+                <span>量比 ${(s.vol_ratio ?? 0).toFixed(2)}x</span>
+                ${rsiStr ? `<span>${rsiStr}</span>` : ''}
+                ${kdStr ? `<span>${kdStr}</span>` : ''}
+                ${histStr ? `<span>${histStr}</span>` : ''}
+                ${instDetail.trust_days > 0 ? `<span style="color:#a371f7;">投信${instDetail.trust_days}日買超${instDetail.trust_increasing ? '↑' : ''}</span>` : ''}
+                ${instDetail.foreign_days > 0 ? `<span style="color:#79c0ff;">外資${instDetail.foreign_days}日買超${instDetail.foreign_increasing ? '↑' : ''}</span>` : ''}
+                <span style="margin-left:auto; color:#3fb950; font-weight:bold;">得分 ${s.score}/10</span>
+            </div>
+            <div style="margin-top:8px; line-height:1.8;">${condHtml}</div>
+        </div>`;
+    }
+
+    // 關閉主題選股 Modal 背景點擊
+    document.getElementById('theme-scanner-modal')?.addEventListener('click', function(e) {
+        if (e.target === this) closeThemeScannerModal();
+    });
+    </script>
 
     <script src="/static/alert-utils.js"></script>
     <script src="/static/watchlist.js"></script>

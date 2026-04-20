@@ -159,3 +159,76 @@ MANUAL_SUB_CATEGORIES = {
 # Priority: Manual > Dynamic
 STOCK_SUB_CATEGORIES = _tech_category_map.copy()
 STOCK_SUB_CATEGORIES.update(MANUAL_SUB_CATEGORIES)
+
+# ============================================================
+# 主題選股清單 (Thematic Stock Lists)
+# ============================================================
+
+# 主題一：矽光子（CPO）與先進封裝的設備支援軍
+# 包含精密光學檢測、光收發模組、先進封裝設備/材料相關周邊小廠
+THEME_SILICON_PHOTONICS = [
+    '3081',  # 聯亞 - 光收發器/光通訊元件
+    '3363',  # 上詮 - 光纖收發模組
+    '6451',  # 精聯 - 光學連接器
+    '4908',  # 前鼎 - 光通訊零組件
+    '3707',  # 漢微科 - 電子束量測(EBI)設備，先進封裝檢測
+    '5274',  # 信紘科 - 半導體設備零件
+    '6147',  # 頎邦 - IC基板/覆晶封裝
+    '4966',  # 譜瑞-KY - PCIe/DisplayPort IC(CPO資料傳輸)
+    '3680',  # 萬潤 - 被動元件/光電元件外觀檢驗設備
+    '6271',  # 同欣電 - 光學/影像感測器封測
+    '3227',  # 原相 - 光學感測IC
+    '4979',  # 華星光 - 光纖被動元件
+    '6558',  # 涵笙 - 光纖傳輸模組
+]
+
+# 主題二：次世代電力與液冷散熱零組件
+# 包含快拆接頭(UQD)、特種閥門、液冷模組、微型水冷泵等
+THEME_LIQUID_COOLING = [
+    '3017',  # 奇鋐 - 散熱模組龍頭(液冷/風冷)
+    '3324',  # 雙鴻 - 液冷散熱模組
+    '3016',  # 健策 - 均溫板/導熱材料
+    '2421',  # 建準 - 散熱風扇/小型水泵
+    '1590',  # 亞德客-KY - 氣動/液壓快拆接頭、特種閥門
+    '8996',  # 高力 - 熱交換器(CDU關鍵零組件)
+    '6275',  # 元山 - 散熱模組/機殼
+    '2114',  # 鑫永銓 - 鋁擠散熱片
+    '6230',  # 超眾 - 熱管/均溫板
+    '3498',  # 陽程 - 精密加工(液冷管路零組件)
+    '2233',  # 宏旭-KY - CDU/液冷分配裝置
+]
+
+# 主題三：邊緣 AI 與自動化設備（隱形冠軍）
+# 包含機器人手臂、機器視覺AOI、工廠自動化等
+THEME_EDGE_AI = [
+    '2359',  # 所羅門 - 機器人視覺AI系統整合
+    '3563',  # 牧德 - AOI自動光學檢測設備
+    '6414',  # 樺漢 - 工業邊緣電腦/工控
+    '2049',  # 上銀 - 線性傳動/機器人關節
+    '1583',  # 程泰 - CNC工具機/機器人
+    '6168',  # 宏正自動 - KVM切換器/工業控制
+    '3438',  # 類比科技 - 工業感測/模擬IC
+    '4960',  # 誠美材 - 機器視覺用光源
+    '5213',  # 亞光 - 工業用光學鏡頭/感測器
+    '3296',  # 勝德 - 工業電源供應器
+    '6197',  # 和碩 - 工業電腦/邊緣AI裝置
+]
+
+# 股票→主題對應 Map
+STOCK_THEME_MAP: dict[str, str] = {}
+for _code in THEME_SILICON_PHOTONICS:
+    STOCK_THEME_MAP[_code] = 'silicon_photonics'
+for _code in THEME_LIQUID_COOLING:
+    STOCK_THEME_MAP[_code] = 'liquid_cooling'
+for _code in THEME_EDGE_AI:
+    STOCK_THEME_MAP[_code] = 'edge_ai'
+
+# 主題中文標籤
+THEME_LABELS: dict[str, str] = {
+    'silicon_photonics': '矽光子CPO設備支援',
+    'liquid_cooling': '液冷散熱零組件',
+    'edge_ai': '邊緣AI自動化',
+}
+
+# 所有主題股票合集（不重複）
+ALL_THEME_STOCKS = list(set(THEME_SILICON_PHOTONICS + THEME_LIQUID_COOLING + THEME_EDGE_AI))

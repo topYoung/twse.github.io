@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from app.services.stock_data import get_market_index, get_filtered_stocks, get_stock_history, search_stock_code
 from app.services.layout_analyzer import get_all_investors_summary, get_layout_stocks, get_multi_investor_layout, get_major_investors_layout
 from app.services.breakout_scanner import get_breakout_stocks, get_rebound_stocks, get_downtrend_stocks
@@ -8,6 +8,7 @@ from app.services.dividend_scanner import get_high_dividend_stocks
 from app.services.wantgoo_service import wantgoo_service
 from app.services.twse_service import fetch_ex_dividend_stocks
 from app.services.macd_scanner import get_macd_breakout_stocks
+import asyncio
 
 app = FastAPI()
 # Force server reload for stock_data updates
@@ -24,7 +25,42 @@ async def health_check():
 
 @app.get("/api/market-index")
 async def api_market_index():
-    return get_market_index()
+    """取得大盤指數，如果超時則返回緩存或錯誤"""
+    try:
+        # 使用 asyncio.wait_for 添加 10 秒超時
+        loop = asyncio.get_event_loop()
+        market_data = await asyncio.wait_for(
+            loop.run_in_executor(None, get_market_index),
+            timeout=10.0
+        )
+        return market_data if market_data else {
+            "error": "Unable to fetch market data",
+            "price": 0,
+            "change": 0,
+            "percent_change": 0
+        }
+    except asyncio.TimeoutError:
+        # 超時時返回錯誤提示而非卡住
+        return JSONResponse(
+            status_code=504,
+            content={
+                "error": "Market index fetch timeout",
+                "price": 0,
+                "change": 0,
+                "percent_change": 0
+            }
+        )
+    except Exception as e:
+        print(f"Error in api_market_index: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": str(e),
+                "price": 0,
+                "change": 0,
+                "percent_change": 0
+            }
+        )
 
 @app.get("/api/stocks")
 async def api_stocks():
@@ -230,3 +266,26 @@ async def api_scanner_dealer_buy():
     """獲取自營商近期大量買超的股票"""
     from app.services.chips_scanner import scan_dealer_net_buy
     return scan_dealer_net_buy()
+
+
+# --- Theme Scanner Endpoint ---
+
+@app.get("/api/theme-scanner")
+async def api_theme_scanner(
+    theme: str = "all",
+    max_capital: float = 30.0,
+    min_score: int = 0,
+    force_refresh: bool = False,
+):
+    """
+    主題選股掃描器
+
+    Args:
+        theme: 'silicon_photonics' | 'liquid_cooling' | 'edge_ai' | 'all'（預設全部）
+        max_capital: 股本上限（億元），預設 30
+        min_score: 最低得分（0~10），預設 0
+        force_refresh: 強制重新掃描，忽略快取
+    """
+    from app.services.theme_scanner import get_theme_stocks
+    theme_param = None if theme == "all" else theme
+    return get_theme_stocks(theme_param, max_capital, min_score, force_refresh)
