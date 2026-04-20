@@ -141,9 +141,10 @@ async def api_watchlist_check(codes: str):
 @app.get("/api/breakout-stocks")
 async def api_breakout_stocks():
     """
-    Get potential breakout stocks (Consolidation + Spike)
+    Get potential breakout stocks with signal classification (MACD-based)
+    Includes signal_type, signal_priority, and revenue_status
     """
-    return get_breakout_stocks()
+    return get_macd_breakout_stocks()
 
 @app.get("/api/rebound-stocks")
 async def api_rebound_stocks():

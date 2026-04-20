@@ -879,9 +879,24 @@ function createBreakoutCard(stock) {
         openChart(stock.code, stock.name, stock.category || '起漲訊號');
     };
 
-    if (stock.is_low_base) {
-        card.style.borderLeft = '4px solid #f1c40f'; // Yellow gold for gems
-        card.style.background = 'linear-gradient(90deg, rgba(241, 196, 15, 0.05) 0%, rgba(13, 17, 23, 1) 100%)';
+    // 根據訊號優先級設定邊框顏色
+    const priorityColors = {
+        1: '#f1c40f', // 營收爆發 - 黃金色
+        2: '#da3633', // 底部起漲 - 紅色
+        3: '#da3633', // 營收驅動 - 紅色
+        4: '#238636', // 加速起漲 - 綠色
+        5: '#388bfd', // 突破起漲 - 藍色
+        99: '#8b949e'  // 其他 - 灰色
+    };
+    
+    const priority = stock.signal_priority || 99;
+    card.style.borderLeft = `4px solid ${priorityColors[priority] || '#da3633'}`;
+    
+    // 優先級較高的股票加背景漸變
+    if (priority === 1) {
+        card.style.background = 'linear-gradient(90deg, rgba(241, 196, 15, 0.08) 0%, rgba(13, 17, 23, 1) 100%)';
+    } else if (priority === 2) {
+        card.style.background = 'linear-gradient(90deg, rgba(218, 54, 51, 0.08) 0%, rgba(13, 17, 23, 1) 100%)';
     }
 
     const changeClass = stock.change_percent >= 0 ? 'up' : 'down';
@@ -897,35 +912,17 @@ function createBreakoutCard(stock) {
         return String(n);
     };
 
-    const kdText = (stock.kd_k != null && stock.kd_d != null) ? `K ${stock.kd_k} / D ${stock.kd_d}` : '-';
-    const rsiText = (stock.rsi != null) ? `${stock.rsi}` : '-';
-    const macdText = (stock.macd_dif != null && stock.macd_signal != null && stock.macd_hist != null)
-        ? `DIF ${stock.macd_dif} / DEA ${stock.macd_signal} / H ${stock.macd_hist}`
+    const kdText = (stock.kd_d_value != null) ? `D ${stock.kd_d_value}` : '-';
+    const macdText = (stock.macd && stock.macd.hist != null)
+        ? `H ${stock.macd.hist}`
         : '-';
-    const biasText = (stock.bias20 != null) ? `${stock.bias20}%` : '-';
-    const bbText = (stock.bb_upper != null && stock.bb_mid != null && stock.bb_lower != null && stock.bb_width != null)
-        ? `上 ${stock.bb_upper} / 中 ${stock.bb_mid} / 下 ${stock.bb_lower} (寬 ${stock.bb_width}%)`
-        : '-';
-
-    const diagnosticHtml = (stock.diagnostics || []).map(d => {
-        let color = '#388bfd'; // Default blue (momentum)
-        if (d.includes('過熱') || d.includes('高檔') || d.includes('偏高')) color = '#f85149'; // Red (risk)
-        if (d.includes('低位階')) color = '#f1c40f'; // Yellow (opportunity)
-        return `<span style="background: ${color}15; color: ${color}; border: 1px solid ${color}44; padding: 1px 6px; border-radius: 4px; font-size: 0.75em; margin-right: 4px; display: inline-block;">${d}</span>`;
-    }).join('');
-
-    // 起漲模式標記（新增）
-    const patternBadge = stock.breakout_pattern || '';
-    let patternClass = 'pattern-long'; // 預設藍色
-
-    // 根據不同模式設定 class
-    if (patternBadge.includes('低檔')) {
-        patternClass = 'pattern-low';
-    } else if (patternBadge.includes('高檔')) {
-        patternClass = 'pattern-high';
-    } else if (patternBadge.includes('長期')) {
-        patternClass = 'pattern-long';
-    }
+    
+    // 訊號類型徽章
+    const signalBadgeClass = priority === 1 ? 'badge-gold' : 'badge-red';
+    const signalType = stock.signal_type || '其他訊號';
+    
+    // 營收狀態
+    const revenueStatus = stock.revenue_status || '';
 
     card.innerHTML = `
         <div class="card-header">
@@ -934,24 +931,26 @@ function createBreakoutCard(stock) {
                     <span class="stock-name">${stock.name}</span>
                     <span class="stock-code-small">${stock.code}</span>
                 </div>
-                <!-- 起漲模式標記（新增）-->
-                ${patternBadge ? `<div class="pattern-badge-container">
-                    <span class="pattern-badge ${patternClass}">${patternBadge}</span>
-                </div>` : ''}
-                <!-- 診斷標籤 -->
-                <div class="diagnostic-area" style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px;">
-                    ${diagnosticHtml}
+                <!-- 訊號分類徽章（新增）-->
+                <div style="margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap;">
+                    <span class="badge ${signalBadgeClass}" style="background: ${priorityColors[priority]}; color: white; font-weight: 600; padding: 3px 8px; border-radius: 3px; font-size: 0.85em;">
+                        ${signalType}
+                    </span>
+                    <span style="background: rgba(56, 139, 253, 0.15); color: #79c0ff; border: 1px solid rgba(56, 139, 253, 0.3); padding: 3px 8px; border-radius: 3px; font-size: 0.80em;">
+                        優先級 ${priority}
+                    </span>
                 </div>
-                <div class="breakout-metrics">
-                    <div class="breakout-metric"><span class="metric-label">成交量</span><span class="metric-value">${fmtVol(stock.volume)}</span></div>
+                <!-- 營收狀態（新增）-->
+                ${revenueStatus ? `<div style="margin-top: 4px; font-size: 0.80em; color: #79c0ff; background: rgba(56, 139, 253, 0.08); padding: 4px 6px; border-radius: 3px; border-left: 2px solid rgba(56, 139, 253, 0.3);">
+                    💡 ${revenueStatus}
+                </div>` : ''}
+                <div class="breakout-metrics" style="margin-top: 8px;">
+                    <div class="breakout-metric"><span class="metric-label">量比</span><span class="metric-value">${stock.vol_ratio}x</span></div>
                     <div class="breakout-metric"><span class="metric-label">KD</span><span class="metric-value">${kdText}</span></div>
-                    <div class="breakout-metric"><span class="metric-label">RSI</span><span class="metric-value">${rsiText}</span></div>
                     <div class="breakout-metric"><span class="metric-label">MACD</span><span class="metric-value">${macdText}</span></div>
-                    <div class="breakout-metric"><span class="metric-label">BIAS(20)</span><span class="metric-value">${biasText}</span></div>
-                    <div class="breakout-metric"><span class="metric-label">布林(20,2)</span><span class="metric-value">${bbText}</span></div>
+                    <div class="breakout-metric"><span class="metric-label">成交量</span><span class="metric-value">${fmtVol(stock.volume)}</span></div>
                 </div>
             </div>
-            <span class="badge" style="background: #da3633; color: white;">${stock.reason}</span>
         </div>
         <div class="card-body">
             <div class="price-info">
@@ -960,19 +959,8 @@ function createBreakoutCard(stock) {
                       ${sign}${stock.change_percent}%
                  </div>
             </div>
-            <div class="layout-stats" style="margin-top: 10px; font-size: 0.9em; color: #8b949e; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                <div class="layout-stat-item">
-                     <span>盤整振幅: ${stock.amplitude}% (${stock.box_days}日)</span>
-                </div>
-                <div class="layout-stat-item">
-                     <span>量能倍增: ${stock.vol_ratio}x</span>
-                </div>
-                <div class="layout-stat-item">
-                     <span>法人買超: ${fmtVol(stock.inst_net)}</span>
-                </div>
-                <div class="layout-stat-item">
-                     <span style="color: ${stock.bid_ask_ratio >= 1.5 ? '#da3633' : '#8b949e'}">買賣比: ${stock.bid_ask_ratio}</span>
-                </div>
+            <div style="margin-top: 10px; font-size: 0.9em; color: #8b949e;">
+                ${stock.pattern ? `<div style="padding: 6px; background: rgba(56, 139, 253, 0.08); border-radius: 3px; border-left: 2px solid #79c0ff;">📊 ${stock.pattern}</div>` : ''}
             </div>
         </div>
     `;
