@@ -14,6 +14,9 @@ import json
 import ssl
 import time
 
+# 大盤指數記憶體快取（非交易時間回傳上一交易日數據）
+_market_index_cache: Dict = {}
+
 def fetch_mis_index_data():
     """
     Fetches real-time data from TWSE MIS API for the Weighted Index (tse_t00.tw).
@@ -81,45 +84,52 @@ def fetch_mis_index_data():
 
 def get_market_index():
     """Fetches the current real-time data for Taiwan Weighted Index."""
+    global _market_index_cache
+
     # 1. Try Real-time MIS API first
     mis_data = fetch_mis_index_data()
     if mis_data:
+        mis_data['is_realtime'] = True
+        _market_index_cache = mis_data
         return mis_data
 
     # 2. Fallback to yfinance (Delayed)
     try:
         ticker = yf.Ticker("^TWII")
-        
-        # Use history to get the actual data which is often more up-to-date than fast_info
-        # Fetch 5 days to ensure we have previous day even after weekends
         hist = ticker.history(period="5d")
-        
-        if hist.empty:
-             # Fallback
-             return {"price": 0, "change": 0, "percent_change": 0}
 
-        # Current is the last row
-        current_price = hist['Close'].iloc[-1]
-        
-        # Previous close
-        # If we have at least 2 days, use the 2nd to last close
-        if len(hist) >= 2:
-            prev_close = hist['Close'].iloc[-2]
-        else:
-            # Fallback to metadata if history is too short (rare)
-            prev_close = ticker.info.get('previousClose', current_price)
-        
-        change = current_price - prev_close
-        percent_change = (change / prev_close) * 100 if prev_close != 0 else 0
-        
-        return {
-            "price": round(current_price, 2),
-            "change": round(change, 2),
-            "percent_change": round(percent_change, 2)
-        }
+        if not hist.empty:
+            current_price = hist['Close'].iloc[-1]
+            prev_close = hist['Close'].iloc[-2] if len(hist) >= 2 else current_price
+            change = current_price - prev_close
+            percent_change = (change / prev_close) * 100 if prev_close != 0 else 0
+
+            # 取得日期列 (tz-naive)
+            last_date = hist.index[-1]
+            if hasattr(last_date, 'date'):
+                last_date = last_date.date()
+            date_str = str(last_date)
+
+            result = {
+                "price": round(float(current_price), 2),
+                "change": round(float(change), 2),
+                "percent_change": round(float(percent_change), 2),
+                "is_realtime": False,
+                "date": date_str
+            }
+            _market_index_cache = result
+            return result
     except Exception as e:
-        print(f"Error fetching index: {e}")
-        return {"price": 0, "change": 0, "percent_change": 0}
+        print(f"Error fetching index via yfinance: {e}")
+
+    # 3. 如果所有方法失敗，回傳快取的上一次成功結果
+    if _market_index_cache:
+        cached = dict(_market_index_cache)
+        cached['is_realtime'] = False
+        cached['from_cache'] = True
+        return cached
+
+    return {"price": 0, "change": 0, "percent_change": 0, "is_realtime": False}
 
 def calculate_ma(hist_data, window=20):
     return hist_data['Close'].rolling(window=window).mean().iloc[-1]

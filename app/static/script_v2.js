@@ -100,18 +100,30 @@ async function fetchMarketIndex() {
 }
 
 function renderIndex(data) {
-    if (!data || data.error || data.price === 0) {
+    if (!data || (data.price === 0 && !data.from_cache)) {
         indexPriceEl.textContent = '--';
         indexChangeEl.textContent = '資料取得失敗';
         indexChangeEl.className = 'index-change';
         return;
     }
-    indexPriceEl.textContent = data.price.toLocaleString();
+    indexPriceEl.textContent = Number(data.price).toLocaleString();
     const sign = data.change >= 0 ? '+' : '';
     const colorClass = data.change >= 0 ? 'up' : 'down';
-
     indexChangeEl.textContent = `${sign}${data.change} (${data.percent_change}%)`;
     indexChangeEl.className = `index-change ${colorClass}`;
+
+    // 非即時：顯示日期標籤
+    const subtitleEl = document.getElementById('index-subtitle');
+    if (subtitleEl) {
+        if (data.is_realtime) {
+            subtitleEl.textContent = '即時';
+            subtitleEl.style.color = '#3fb950';
+        } else {
+            const label = data.date ? `${data.date} 收盤` : '前一交易日';
+            subtitleEl.textContent = label;
+            subtitleEl.style.color = '#8b949e';
+        }
+    }
 }
 
 // --- Stock List ---
@@ -883,6 +895,7 @@ function createBreakoutCard(stock) {
     card.className = 'stock-card breakout-card';
     card.style.borderLeft = '4px solid #da3633'; // Highlight Red
     card.onclick = () => {
+        closeBreakoutModal();   // 先關掉起漲訊號 modal
         openChart(stock.code, stock.name, stock.category || '起漲訊號');
     };
 
@@ -986,13 +999,14 @@ function createBreakoutCard(stock) {
                     <div>布林: ${bbText}</div>
                     <div>MACD: ${macdText}</div>
                 </div>
-                <!-- 三大法人 -->
+                <!-- 三大法人（全為 0 時不顯示） -->
+                ${(inst.foreign || inst.trust || inst.dealer) ? `
                 <div style="margin-top:6px; font-size:0.80em; display:grid; grid-template-columns:1fr 1fr 1fr; gap:4px;
                             background:rgba(255,255,255,0.03); border-radius:4px; padding:5px 6px;">
                     <div>外資 ${fmtInst(inst.foreign)}</div>
                     <div>投信 ${fmtInst(inst.trust)}</div>
                     <div>自營 ${fmtInst(inst.dealer)}</div>
-                </div>
+                </div>` : ''}
             </div>
         </div>
         <div class="card-body">
@@ -1360,7 +1374,7 @@ async function runComprehensiveAnalysis() {
         'dividend': '/api/high-dividend-stocks?min_yield=3.0&top_n=200',
         'divergence': '/api/divergence-stocks?days=5&min_net_buy=100&max_price_change=1.0',
         'intraday': '/api/intraday-stocks',
-        'macd_breakout': '/api/macd-breakout-stocks',
+        'macd_breakout': '/api/star-confirmed-stocks',
         'pressure': '/api/pressure-stocks?min_days=2',
         'trend_radar': '/api/trend-radar-stocks',
         'trust_ratio': '/api/scanner/chips/trust-ratio',
@@ -1502,14 +1516,9 @@ function normalizeStockData(source) {
         code: source.code || source.stock_code,
         name: source.name || source.stock_name,
         category: source.category || '其他',
-        price: source.price || 0, // Some APIs might not have price (e.g. layout only has net) -> Layout API usually lacks real-time price! 
-        // Note: Layout API DOES NOT return realtime price. It returns historical pattern.
-        // If we pick "Investor" only, we might show 0 price. This is a known limitation for now.
-        // We could fetch price separately but that's expensive for lists.
-        // For now, assume 0 or handle in UI.
-
+        price: source.price || 0,
         change: source.change || 0,
-        change_percent: source.change_percent || 0, // Standardize? source.change_percent might be missing
+        change_percent: source.change_percent || 0,
 
         // MA specific
         ma20: source.ma20,
@@ -1521,13 +1530,35 @@ function normalizeStockData(source) {
         // Layout specific
         total_net: source.total_net,
 
+        // BB+MACD (起漲訊號 / 星級雙重確認)
+        signal_type: source.signal_type,
+        signal_desc: source.signal_desc,
+        macd: source.macd,
+        bollinger: source.bollinger,
+        vol_ratio: source.vol_ratio,
+        institutional: source.institutional,
+        position: source.position,
+
         // Sparkline
         sparkline: source.sparkline || []
     };
 }
 
 function renderStockDetailLine(stock) {
-    // Logic to decide what to show in the detail line based on available data
+    // BB+MACD 起漲訊號優先顯示
+    if (stock.signal_type) {
+        const bb = stock.bollinger || {};
+        const macd = stock.macd || {};
+        const inst = stock.institutional || {};
+        const instTotal = inst.total ? Math.round(inst.total / 1000) : 0;
+        const instStr = instTotal !== 0
+            ? `&nbsp;|&nbsp;法人 <span style="color:${instTotal>0?'#3fb950':'#f85149'}">${instTotal>0?'+':''}${instTotal}張</span>`
+            : '';
+        return `<span style="color:#f1c40f;font-weight:700">${stock.signal_type}</span>&nbsp;
+                DIF:<span style="color:#8b949e">${macd.dif??'-'}</span>&nbsp;
+                OSC:<span style="color:${(macd.hist??0)>0?'#f85149':'#2ea043'}">${macd.hist??'-'}</span>&nbsp;
+                %B:<span style="color:#8b949e">${bb.percent_b??'-'}%</span>${instStr}`;
+    }
     if (stock.ma20 !== undefined && stock.diff_percent !== undefined) {
         return `MA20: ${stock.ma20} (${stock.diff_percent}%)`;
     }
@@ -2366,39 +2397,57 @@ function openMacdBreakoutModal() {
                 const changeClass = stock.change_percent >= 0 ? 'positive' : 'negative';
                 const sign = stock.change_percent > 0 ? '+' : '';
 
-                // 決定卡片邊框或顏色標記 (剛翻紅比較重要可以亮一點)
-                const isJustRed = stock.is_just_red;
-                const borderStyle = isJustRed ? 'border-left: 4px solid #f85149;' : 'border-left: 4px solid #2ea043;';
+                const priority = stock.signal_priority || 2;
+                const borderColor = priority === 1 ? '#f1c40f' : '#da3633';
+                const signalType = stock.signal_type || '-';
+                const bb = stock.bollinger || {};
+                const macd = stock.macd || {};
+                const inst = stock.institutional || {};
+                const fmtInst = (v) => {
+                    if (!v) return null;
+                    const lots = Math.round(v / 1000);
+                    if (lots === 0) return null;
+                    const sign = lots >= 0 ? '+' : '';
+                    const color = lots >= 0 ? '#3fb950' : '#f85149';
+                    return `<span style="color:${color}">${sign}${lots.toLocaleString()}張</span>`;
+                };
+                const instParts = [
+                    inst.foreign ? `外資 ${fmtInst(inst.foreign)}` : null,
+                    inst.trust   ? `投信 ${fmtInst(inst.trust)}`   : null,
+                    inst.dealer  ? `自營 ${fmtInst(inst.dealer)}`  : null,
+                ].filter(Boolean);
 
                 card.innerHTML = `
                     <div class="stock-header">
-                        <span class="stock-name" style="${borderStyle} padding-left: 8px;">
+                        <span class="stock-name" style="border-left: 4px solid ${borderColor}; padding-left: 8px;">
                             ${stock.name} (${stock.code})
                         </span>
                     </div>
-                    
+
                     <div class="stock-price-row" style="margin-top: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: baseline;">
                         <span class="price" style="font-size: 1.4em; font-weight: bold;">${stock.price.toFixed(2)}</span>
                         <span class="change ${changeClass}" style="font-size: 1.1em; font-weight: bold;">
                             ${sign}${stock.change_percent.toFixed(2)}%
                         </span>
                     </div>
-                    
+
                     <div style="background: #0d1117; padding: 10px; border-radius: 6px; margin-bottom: 5px;">
-                        <div style="color: #ff7b72; font-weight: bold; margin-bottom: 5px;">
-                            ${stock.pattern}
-                        </div>
+                        <div style="color: ${borderColor}; font-weight: bold; margin-bottom: 5px;">${signalType}</div>
                         <div style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 0.9em; color: #c9d1d9;">
-                            <span>DIF: <span style="color: #8b949e">${stock.macd.dif}</span></span>
-                            <span>MACD(DEA): <span style="color: #8b949e">${stock.macd.dea}</span></span>
-                            <span>柱狀(Hist): <span style="color: ${stock.macd.hist > 0 ? '#f85149' : '#2ea043'}">${stock.macd.hist}</span></span>
+                            <span>DIF: <span style="color:#8b949e">${macd.dif ?? '-'}</span></span>
+                            <span>MACD(DEA): <span style="color:#8b949e">${macd.dea ?? '-'}</span></span>
+                            <span>柱狀(Hist): <span style="color:${(macd.hist ?? 0) > 0 ? '#f85149' : '#2ea043'}">${macd.hist ?? '-'}</span></span>
                         </div>
+                        <div style="font-size: 0.82em; color: #6e7681; margin-top: 4px;">
+                            %B: ${bb.percent_b ?? '-'}%&nbsp; BBW: ${bb.bbw ?? '-'}%&nbsp; EMA: ${bb.bbw_ema ?? '-'}%
+                        </div>
+                        ${instParts.length ? `<div style="font-size:0.82em; margin-top:4px;">${instParts.join(' &nbsp;|&nbsp; ')}</div>` : ''}
                     </div>
-                    
+
                     <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85em; margin-top: 6px; padding-top: 6px; border-top: 1px solid #21262d;">
                         <span style="color: #8b949e;">
                             成交量 <span style="color: #c9d1d9;">${Math.round(stock.volume / 1000).toLocaleString()} 張</span>
-                            &nbsp;|&nbsp; 5日均量比
+                            &nbsp;|&nbsp; 量比
                             <span style="color: ${stock.vol_ratio >= 1.5 ? '#ff7b72' : stock.vol_ratio >= 1.0 ? '#e3b341' : '#8b949e'}; font-weight: bold;">
                                 ${stock.vol_ratio ? stock.vol_ratio.toFixed(2) : '-'}x
                             </span>

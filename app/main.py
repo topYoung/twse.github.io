@@ -167,6 +167,19 @@ async def api_macd_breakout_stocks():
     """
     return get_macd_breakout_stocks()
 
+@app.get("/api/star-confirmed-stocks")
+async def api_star_confirmed_stocks():
+    """
+    星級雙重確認：BB 起漲訊號 + 同日三大法人合計買超 > 0
+    """
+    all_stocks = get_macd_breakout_stocks()
+    items = all_stocks if isinstance(all_stocks, list) else all_stocks.get('stocks', [])
+    confirmed = [
+        s for s in items
+        if (s.get('institutional') or {}).get('total', 0) > 0
+    ]
+    return confirmed
+
 @app.get("/api/layout-stocks/intersection/{mode}")
 async def api_layout_intersection(mode: str, days: int = 90, min_score: float = 30.0, top_n: int = 50):
     """
