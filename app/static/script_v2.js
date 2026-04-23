@@ -1904,6 +1904,12 @@ function createConsolidationCard(stock) {
         ? `<span style="background:#3fb950;color:#fff;padding:2px 8px;border-radius:4px;font-size:0.82em;font-weight:700;">🚀 剛起漲</span>`
         : `<span style="background:#b08000;color:#fff;padding:2px 8px;border-radius:4px;font-size:0.82em;font-weight:700;">📦 盤整中</span>`;
 
+    // 營收
+    const rev = stock.revenue || {};
+    const revText = (rev.mom != null || rev.yoy != null)
+        ? `MOM: ${rev.mom != null ? rev.mom + '%' : 'N/A'}  |  YOY: ${rev.yoy != null ? rev.yoy + '%' : 'N/A'}`
+        : null;
+
     card.innerHTML = `
         <div class="card-header">
             <div class="stock-identity">
@@ -1935,6 +1941,10 @@ function createConsolidationCard(stock) {
                         合計 ${fmtLots(inst5.total)}
                     </div>
                 </div>` : ''}
+                <!-- 營收 -->
+                ${revText ? `<div style="margin-top:6px;padding:4px 8px;background:rgba(35,134,54,0.1);
+                              border-left:3px solid #238636;border-radius:3px;
+                              font-size:0.80em;color:#3fb950;">💰 ${revText}</div>` : ''}
             </div>
         </div>
         <div class="card-body">

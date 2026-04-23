@@ -184,6 +184,10 @@ def get_consolidation_stocks(tech_only: bool = True) -> List[Dict[str, Any]]:
     # ── 3. 一次性取得 5 日法人籌碼 ──
     inst5_map = get_5day_institutional_bulk()
 
+    # ── 營收資料 ──
+    from app.services.revenue_service import get_revenue_map
+    revenue_map = get_revenue_map()
+
     # ── 4. 逐支分析 ──
     def process_stock(code: str, df: pd.DataFrame) -> Dict[str, Any]:
         try:
@@ -225,6 +229,11 @@ def get_consolidation_stocks(tech_only: bool = True) -> List[Dict[str, Any]]:
             # 5 日三大法人（股 → 張，前端顯示用）
             inst5 = inst5_map.get(code, {})
 
+            # 營收
+            rev = revenue_map.get(code, {})
+            mom = rev.get('mom')
+            yoy = rev.get('yoy')
+
             return {
                 'code': code,
                 'name': stock_info_map[code]['name'],
@@ -250,6 +259,11 @@ def get_consolidation_stocks(tech_only: bool = True) -> List[Dict[str, Any]]:
                     'trust':   int(inst5.get('trust',   0)),
                     'dealer':  int(inst5.get('dealer',  0)),
                     'total':   int(inst5.get('total',   0)),
+                },
+                # 營收
+                'revenue': {
+                    'mom': round(mom, 2) if mom is not None else None,
+                    'yoy': round(yoy, 2) if yoy is not None else None,
                 },
             }
         except Exception:
