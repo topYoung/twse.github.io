@@ -58,6 +58,15 @@
                 <div id="index-subtitle" style="font-size:0.75em; margin-top:4px; color:#8b949e;"></div>
             </div>
         </header>
+        <!-- 掃描範圍控制列 -->
+        <div style="background:#161b22; border-bottom:1px solid #30363d; padding:8px 24px; display:flex; align-items:center; gap:10px;">
+            <label style="display:flex; align-items:center; gap:7px; cursor:pointer; user-select:none; font-size:0.92em; color:#c9d1d9;">
+                <input type="checkbox" id="tech-only-checkbox" checked
+                    style="width:16px; height:16px; accent-color:#388bfd; cursor:pointer;">
+                <span>⚡ 只掃描科技股</span>
+            </label>
+            <span id="tech-only-hint" style="font-size:0.78em; color:#8b949e;">（半導體、電腦、光電、通信、電子零組件、電子通路、資訊服務、其他電子）</span>
+        </div>
 
         <main>
             <section class="stock-list-section">
@@ -92,6 +101,10 @@
                         <button class="investor-btn" onclick="openMomentumModal()"
                             style="border: 1px solid #ff7b72; color: #ff7b72;">
                             <span class="icon">🔥</span> 連漲強勢
+                        </button>
+                        <button class="investor-btn" onclick="openConsolidationModal()"
+                            style="border: 1px solid #e3b341; color: #e3b341;">
+                            <span class="icon">📦</span> 盤整蓄勢
                         </button>
                         <button class="investor-btn" onclick="openBreakoutModal()"
                             style="border: 1px solid #da3633; color: #da3633;">
@@ -325,12 +338,31 @@
         </div>
     </div>
 
-    <!-- 起漲訊號 Modal -->
-    <div id="breakout-modal" class="modal hidden">
+    <!-- 盤整蓄勢 Modal -->
+    <div id="consolidation-modal" class="modal hidden">
         <div class="modal-content investor-modal-content" style="max-width: 900px;">
             <div class="modal-header">
+                <h2>📦 盤整蓄勢 (箱型盤整 5天~3個月)</h2>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <button onclick="fetchConsolidationStocks()" style="background:#21262d;border:1px solid #30363d;color:#cdd9e5;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:0.85em;">🔄 重新掃描</button>
+                    <button class="close-modal-btn" onclick="closeConsolidationModal()">✕</button>
+                </div>
+            </div>
+            <div id="consolidation-loading" class="loading-spinner hidden">正在掃描盤整股票，請稍候...</div>
+            <div id="consolidation-list" class="stock-grid">
+                <!-- 列表將在這裡產生 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 起漲訊號 Modal -->
+    <div id="breakout-modal" class="modal hidden">        <div class="modal-content investor-modal-content" style="max-width: 900px;">
+            <div class="modal-header">
                 <h2>🚀 起漲點偵測 (盤整突破)</h2>
-                <button class="close-modal-btn" onclick="closeBreakoutModal()">✕</button>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <button onclick="openBreakoutModal()" style="background:#21262d;border:1px solid #30363d;color:#cdd9e5;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:0.85em;">🔄 重新掃描</button>
+                    <button class="close-modal-btn" onclick="closeBreakoutModal()">✕</button>
+                </div>
             </div>
             <div id="breakout-loading" class="loading-spinner hidden">正在掃描市場，請稍候...</div>
             <div id="breakout-list" class="stock-grid">
@@ -344,7 +376,10 @@
         <div class="modal-content investor-modal-content" style="max-width: 900px;">
             <div class="modal-header">
                 <h2>🏆 星級雙重確認 (MACD剛翻紅 + 量價突破)</h2>
-                <button class="close-modal-btn" onclick="closeMacdBreakoutModal()">✕</button>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <button onclick="openMacdBreakoutModal()" style="background:#21262d;border:1px solid #30363d;color:#cdd9e5;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:0.85em;">🔄 重新掃描</button>
+                    <button class="close-modal-btn" onclick="closeMacdBreakoutModal()">✕</button>
+                </div>
             </div>
             <div id="macd-breakout-loading" class="loading-spinner hidden">正在掃描市場 MACD 形態，請稍候...</div>
             <div id="macd-breakout-list" class="stock-grid">

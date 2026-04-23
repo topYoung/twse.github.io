@@ -18,21 +18,27 @@ _trend_radar_cache = {
 }
 _cache_lock = threading.Lock()
 
-def get_trend_radar_stocks(force_refresh=False):
+def get_trend_radar_stocks(force_refresh=False, tech_only=True):
     global _trend_radar_cache
     now = datetime.now()
     current_time = time.time()
-    
+
     is_market_hours = (9 <= now.hour < 14) and now.weekday() < 5
     cache_duration = 300 if is_market_hours else 1800
 
+    # tech_only 不同時，快取視為失效
+    cache_key = f'tech_only={tech_only}'
     with _cache_lock:
         if not force_refresh and _trend_radar_cache["data"]:
-            if current_time - _trend_radar_cache["last_update"] < cache_duration:
+            if (current_time - _trend_radar_cache["last_update"] < cache_duration
+                    and _trend_radar_cache.get('cache_key') == cache_key):
                 return _trend_radar_cache["data"]
 
     keys_from_map = list(STOCK_SUB_CATEGORIES.keys())
-    all_stocks = list(set(TECH_STOCKS + TRAD_STOCKS + keys_from_map))
+    if tech_only:
+        all_stocks = list(set(TECH_STOCKS + keys_from_map))
+    else:
+        all_stocks = list(set(TECH_STOCKS + TRAD_STOCKS + keys_from_map))
     inst_data = get_latest_institutional_data()
 
     potential_results = []
@@ -78,6 +84,7 @@ def get_trend_radar_stocks(force_refresh=False):
     with _cache_lock:
         _trend_radar_cache["data"] = final_output
         _trend_radar_cache["last_update"] = current_time
+        _trend_radar_cache["cache_key"] = cache_key
 
     return final_output
 

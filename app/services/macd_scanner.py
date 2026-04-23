@@ -78,21 +78,21 @@ def is_after_consolidation(close_series: pd.Series, hist: pd.Series, dif: pd.Ser
 
 
 
-def get_macd_breakout_stocks() -> List[Dict[str, Any]]:
+def get_macd_breakout_stocks(tech_only: bool = True) -> List[Dict[str, Any]]:
     """
-    掃描全市場股票，找出 MACD 將要黃金交叉（起漲）的股票。
-    條件：
-    1. DIF 與 DEA 差距極小 (DIF - DEA 即 histogram 非常靠近 0)
-    2. 柱狀體 (Histogram) 由綠縮短，或是剛翻紅
-    3. 成交量、價格等基本過濾條件
+    掃描股票，找出 BB+MACD 起漲訊號。
+    tech_only=True（預設）：只掃科技股；False：掃全市場。
     """
-    # 1. 取得全市場股票基本資訊
-    # 1. 取得全市場股票基本資訊 (不要用 get_filtered_stocks 因為它會過濾掉遠離均線的股票)
     from app.services.categories import TECH_STOCKS, TRAD_STOCKS, STOCK_SUB_CATEGORIES, DELISTED_STOCKS
     import twstock
-    
-    keys_from_map = list(STOCK_SUB_CATEGORIES.keys())
-    all_stock_codes = list(set(TECH_STOCKS + TRAD_STOCKS + keys_from_map))
+
+    # TECH_STOCKS 已涵蓋所有電子科技業；tech_only 時不加 STOCK_SUB_CATEGORIES.keys()
+    # 因為 MANUAL_SUB_CATEGORIES 內含金融/航運/鋼鐵等非科技股
+    if tech_only:
+        all_stock_codes = list(set(TECH_STOCKS))
+    else:
+        keys_from_map = list(STOCK_SUB_CATEGORIES.keys())
+        all_stock_codes = list(set(TECH_STOCKS + TRAD_STOCKS + keys_from_map))
     stock_codes = [s for s in all_stock_codes if s not in DELISTED_STOCKS]
     
     if not stock_codes:

@@ -20,6 +20,16 @@ let ma20Series = null;
 let ma60Series = null;
 let chartIntervalId = null;
 let breakoutRefreshId = null;
+let _chartReturnModalId = null;  // 記住開圖前的來源 modal，關圖後自動還原
+
+// --- 只掃科技股 checkbox ---
+function isTechOnly() {
+    const cb = document.getElementById('tech-only-checkbox');
+    return cb ? cb.checked : true;
+}
+function getTechParam() {
+    return `tech_only=${isTechOnly()}`;
+}
 
 // Initialization
 document.addEventListener('DOMContentLoaded', () => {
@@ -317,6 +327,12 @@ function closeChart() {
     if (chartIntervalId) {
         clearInterval(chartIntervalId);
         chartIntervalId = null;
+    }
+    // 回到來源 modal（只顯示，不重新 fetch）
+    if (_chartReturnModalId) {
+        const m = document.getElementById(_chartReturnModalId);
+        if (m) m.classList.remove('hidden');
+        _chartReturnModalId = null;
     }
 }
 
@@ -806,7 +822,7 @@ async function openBreakoutModal() {
     container.innerHTML = '';
 
     try {
-        const response = await fetch('/api/breakout-stocks');
+        const response = await fetch(`/api/breakout-stocks?${getTechParam()}`);
         const data = await response.json();
         const stocks = data.stocks || (Array.isArray(data) ? data : []);
 
@@ -851,7 +867,7 @@ async function openBreakoutModal() {
                 return;
             }
             try {
-                const response = await fetch('/api/breakout-stocks');
+                const response = await fetch(`/api/breakout-stocks?${getTechParam()}`);
                 const data = await response.json();
                 const stocks = data.stocks || (Array.isArray(data) ? data : []);
 
@@ -881,6 +897,13 @@ async function openBreakoutModal() {
     }
 }
 
+// 隱藏 modal 以顯示走勢圖，關圖後自動還原（不清除資料）
+function hideForChart(modalId) {
+    _chartReturnModalId = modalId;
+    const m = document.getElementById(modalId);
+    if (m) m.classList.add('hidden');
+}
+
 function closeBreakoutModal() {
     const modal = document.getElementById('breakout-modal');
     modal.classList.add('hidden');
@@ -895,7 +918,7 @@ function createBreakoutCard(stock) {
     card.className = 'stock-card breakout-card';
     card.style.borderLeft = '4px solid #da3633'; // Highlight Red
     card.onclick = () => {
-        closeBreakoutModal();   // 先關掉起漲訊號 modal
+        hideForChart('breakout-modal');
         openChart(stock.code, stock.name, stock.category || '起漲訊號');
     };
 
@@ -1382,8 +1405,21 @@ async function runComprehensiveAnalysis() {
     };
 
     try {
+        // 動態建立帶 tech_only 參數的 API Map
+        const tp = getTechParam();
+        const apiMapWithParams = Object.fromEntries(
+            Object.entries(apiMap).map(([k, url]) => {
+                // 只有掃描類 endpoint 需要 tech_only
+                const scanApis = ['breakout', 'macd_breakout', 'trend_radar'];
+                if (scanApis.includes(k)) {
+                    const sep = url.includes('?') ? '&' : '?';
+                    return [k, url + sep + tp];
+                }
+                return [k, url];
+            })
+        );
         // Fetch All
-        const promises = selectedStrategies.map(key => fetch(apiMap[key]).then(res => res.json()));
+        const promises = selectedStrategies.map(key => fetch(apiMapWithParams[key]).then(res => res.json()));
         const results = await Promise.all(promises);
 
         // Normalize Data
@@ -1775,6 +1811,143 @@ function openMomentumModal() {
 function closeMomentumModal() {
     document.getElementById('momentum-modal').classList.add('hidden');
 }
+
+// ─── 盤整蓄勢 ──────────────────────────────────────────────────────────────
+
+function openConsolidationModal() {
+    document.getElementById('consolidation-modal').classList.remove('hidden');
+    fetchConsolidationStocks();
+}
+
+function closeConsolidationModal() {
+    document.getElementById('consolidation-modal').classList.add('hidden');
+}
+
+async function fetchConsolidationStocks() {
+    const listEl    = document.getElementById('consolidation-list');
+    const loadingEl = document.getElementById('consolidation-loading');
+
+    listEl.innerHTML = '';
+    loadingEl.classList.remove('hidden');
+    loadingEl.style.display = 'block';
+
+    try {
+        const resp = await fetch(`/api/consolidation-stocks?${getTechParam()}`);
+        const data = await resp.json();
+        const stocks = data.stocks || [];
+
+        loadingEl.classList.add('hidden');
+
+        if (!stocks.length) {
+            listEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#8b949e;">目前暫無符合條件的盤整股票</div>';
+            return;
+        }
+
+        // 分組標題
+        const brokeGroup     = stocks.filter(s => s.status === 'just_broke_out');
+        const consolidGroup  = stocks.filter(s => s.status === 'consolidating');
+
+        const appendGroup = (label, list) => {
+            if (!list.length) return;
+            const header = document.createElement('div');
+            header.style = 'grid-column:1/-1; padding:6px 0 4px; font-size:0.9em; font-weight:700; color:#cdd9e5; border-bottom:1px solid #30363d; margin-bottom:4px;';
+            header.textContent = label;
+            listEl.appendChild(header);
+            list.forEach(s => listEl.appendChild(createConsolidationCard(s)));
+        };
+
+        appendGroup(`🚀 剛起漲（共 ${brokeGroup.length} 支）`, brokeGroup);
+        appendGroup(`📦 盤整蓄勢（共 ${consolidGroup.length} 支）`, consolidGroup);
+
+    } catch (err) {
+        loadingEl.classList.add('hidden');
+        listEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#f85149;">掃描失敗，請稍後重試</div>';
+    }
+}
+
+function createConsolidationCard(stock) {
+    const card = document.createElement('div');
+    card.className = 'stock-card';
+    const isBroke = stock.status === 'just_broke_out';
+    card.style.borderLeft = isBroke ? '4px solid #3fb950' : '4px solid #e3b341';
+    if (isBroke) {
+        card.style.background = 'linear-gradient(90deg, rgba(63,185,80,0.07) 0%, rgba(13,17,23,1) 100%)';
+    }
+    card.onclick = () => {
+        hideForChart('consolidation-modal');
+        openChart(stock.code, stock.name, '盤整蓄勢');
+    };
+
+    const changeClass = stock.change_percent >= 0 ? 'up' : 'down';
+    const sign = stock.change_percent >= 0 ? '+' : '';
+
+    // 五日三大法人格式化（股 → 張）
+    const inst5 = stock.inst_5d || {};
+    const fmtLots = (v) => {
+        if (v == null) return '-';
+        const lots = Math.round(v / 1000);
+        const s = lots >= 0 ? '+' : '';
+        const col = lots >= 0 ? '#3fb950' : '#f85149';
+        return `<span style="color:${col}">${s}${lots.toLocaleString()}張</span>`;
+    };
+
+    const hasInst5 = (inst5.foreign || inst5.trust || inst5.dealer || inst5.total);
+
+    // MACD
+    const macd = stock.macd || {};
+    const macdText = macd.hist != null
+        ? `DIF:${macd.dif} DEA:${macd.dea} OSC:${macd.hist}`
+        : '-';
+
+    // 盤整狀態標籤
+    const statusBadge = isBroke
+        ? `<span style="background:#3fb950;color:#fff;padding:2px 8px;border-radius:4px;font-size:0.82em;font-weight:700;">🚀 剛起漲</span>`
+        : `<span style="background:#b08000;color:#fff;padding:2px 8px;border-radius:4px;font-size:0.82em;font-weight:700;">📦 盤整中</span>`;
+
+    card.innerHTML = `
+        <div class="card-header">
+            <div class="stock-identity">
+                <div class="breakout-title">
+                    <span class="stock-name">${stock.name}</span>
+                    <span class="stock-code-small">${stock.code}</span>
+                </div>
+                <div style="margin-top:5px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                    ${statusBadge}
+                    <span style="font-size:0.82em;color:#8b949e;">盤整 <strong style="color:#cdd9e5;">${stock.consolidation_days}</strong> 天</span>
+                </div>
+                <!-- 箱型資訊 -->
+                <div style="margin-top:5px;font-size:0.80em;color:#6e7681;">
+                    箱型：${stock.box_low} ~ ${stock.box_high}
+                    <span style="margin-left:6px;color:#8b949e;">波動 ${stock.box_range_pct}%</span>
+                </div>
+                <!-- MACD -->
+                <div style="margin-top:4px;font-size:0.77em;color:#6e7681;">MACD: ${macdText}</div>
+                <!-- 近5日三大法人 -->
+                ${hasInst5 ? `
+                <div style="margin-top:6px;font-size:0.80em;background:rgba(255,255,255,0.03);border-radius:4px;padding:5px 6px;">
+                    <div style="color:#8b949e;margin-bottom:3px;">近5日三大法人</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">
+                        <div>外資 ${fmtLots(inst5.foreign)}</div>
+                        <div>投信 ${fmtLots(inst5.trust)}</div>
+                        <div>自營 ${fmtLots(inst5.dealer)}</div>
+                    </div>
+                    <div style="margin-top:3px;border-top:1px solid #21262d;padding-top:3px;">
+                        合計 ${fmtLots(inst5.total)}
+                    </div>
+                </div>` : ''}
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="price-info">
+                <div class="stock-price">${stock.price}</div>
+                <div class="stock-change ${changeClass}">${sign}${stock.change_percent}%</div>
+            </div>
+        </div>`;
+
+    return card;
+}
+
+// ─── /盤整蓄勢 ─────────────────────────────────────────────────────────────
 
 async function fetchMomentumStocks() {
     const listEl = document.getElementById('momentum-list');
@@ -2375,7 +2548,7 @@ function openMacdBreakoutModal() {
     loadingDiv.classList.remove('hidden');
     listDiv.innerHTML = '';
 
-    fetch('/api/macd-breakout-stocks')
+    fetch(`/api/macd-breakout-stocks?${getTechParam()}`)
         .then(response => response.json())
         .then(data => {
             loadingDiv.classList.add('hidden');
@@ -2389,7 +2562,7 @@ function openMacdBreakoutModal() {
                 const card = document.createElement('div');
                 card.className = 'stock-card';
                 card.onclick = () => {
-                    closeMacdBreakoutModal();
+                    hideForChart('macd-breakout-modal');
                     // 等 modal 完全隱藏後再開 chart，避免 chart container 尺寸計算錯誤
                     setTimeout(() => openChart(stock.code, stock.name, 'MACD起漲'), 150);
                 };
@@ -2513,7 +2686,7 @@ async function fetchTrendRadarStocks(forceRefresh = false) {
     loading.classList.remove('hidden');
     
     try {
-        const response = await fetch('/api/trend-radar-stocks' + (forceRefresh ? '?force_refresh=true' : ''));
+        const response = await fetch(`/api/trend-radar-stocks?${forceRefresh ? 'force_refresh=true&' : ''}${getTechParam()}`);
         const result = await response.json();
         
         loading.classList.add('hidden');

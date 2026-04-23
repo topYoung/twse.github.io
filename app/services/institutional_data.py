@@ -445,3 +445,52 @@ def get_latest_institutional_data() -> Dict[str, Dict]:
             
     return dict(combined_data) if found_data else {}
 
+
+def get_5day_institutional_bulk() -> Dict[str, Dict]:
+    """
+    讀取最近 5 個交易日的快取，批次取得所有股票的 5 日合計買賣超。
+    比逐支呼叫 get_5day_institutional_data 快很多。
+    Returns: {code: {'foreign': X, 'trust': Y, 'dealer': Z, 'total': W}} (單位: 股)
+    """
+    result: Dict[str, Dict] = defaultdict(lambda: {'foreign': 0, 'trust': 0, 'dealer': 0, 'total': 0})
+
+    def _find_last_n_files(investor_type: str, n: int = 5) -> list:
+        files = sorted(CACHE_DIR.glob(f"{investor_type}_*.json"), reverse=True)
+        valid = []
+        for f in files:
+            parts = f.stem.split('_')
+            if len(parts) == 2 and parts[1].isdigit() and len(parts[1]) == 8:
+                valid.append(f)
+                if len(valid) >= n:
+                    break
+        return valid
+
+    # TWSE：外資 / 投信 / 自營商
+    for inv_type in ['foreign', 'trust', 'dealer']:
+        for cache_file in _find_last_n_files(inv_type, 5):
+            try:
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    raw = json.load(f)
+                for row in parse_institutional_data(raw):
+                    code = row.get('stock_code', '')
+                    net  = row.get('net', 0)
+                    if code:
+                        result[code][inv_type] += net
+                        result[code]['total']   += net
+            except Exception:
+                pass
+
+    # TPEx（上櫃）
+    for cache_file in sorted(CACHE_DIR.glob("tpex_*.json"), reverse=True)[:5]:
+        try:
+            with open(cache_file, 'r', encoding='utf-8') as f:
+                raw = json.load(f)
+            for code, stats in parse_tpex_data(raw).items():
+                for inv in ['foreign', 'trust', 'dealer']:
+                    result[code][inv]    += stats[inv]
+                result[code]['total'] += stats['total']
+        except Exception:
+            pass
+
+    return {k: dict(v) for k, v in result.items()}
+
