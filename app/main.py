@@ -294,6 +294,68 @@ async def api_scanner_dealer_buy():
     from app.services.chips_scanner import scan_dealer_net_buy
     return scan_dealer_net_buy()
 
+@app.get("/api/scanner/chips/foreign-surge")
+async def api_scanner_foreign_surge(min_buy: int = 500, zscore: float = 2.0):
+    """
+    外資突然大買掃描（Z-Score 版）。
+    找出近一個交易日外資買超量距離 252 日均值 >= zscore 個標準差的股票。
+
+    Args:
+        min_buy: 最低買超門檻 (張，預設 500 張)
+        zscore: Z-Score 門檻 (預設 2.0，即 2 個標準差)
+    """
+    from app.services.chips_scanner import scan_foreign_surge
+    return scan_foreign_surge(min_recent_buy=min_buy, zscore_threshold=zscore)
+
+
+@app.get("/api/scanner/chips/bsr/{stock_code}")
+async def api_bsr_stock(stock_code: str, force_refresh: bool = False):
+    """
+    查詢指定股票的 BSR 分點買賣明細（當日）。
+    包含前 10 大買超券商與前 3 大集中度。
+
+    Args:
+        stock_code: 股票代號 (例如 2330)
+        force_refresh: 強制重新抓取（忽略快取）
+    """
+    from app.services.bsr_scanner import get_bsr_data
+    return get_bsr_data(stock_code, force_refresh=force_refresh)
+
+
+@app.get("/api/scanner/chips/bsr-concentration")
+async def api_bsr_concentration(codes: str, min_concentration: float = 50.0, min_net_buy: int = 200):
+    """
+    批次掃描多支股票，找出主力分點集中買進的股票。
+
+    Args:
+        codes: 逗號分隔的股票代號，例如 "2330,2454,2317"
+        min_concentration: 前 3 大買方集中度門檻 % (預設 50%)
+        min_net_buy: 最低合計買超門檻（張，預設 200 張）
+    """
+    from app.services.bsr_scanner import scan_concentrated_buying
+    stock_list = [c.strip() for c in codes.split(",") if c.strip()]
+    if not stock_list:
+        return {"error": "請提供股票代號"}
+    return scan_concentrated_buying(stock_list, min_concentration, min_net_buy)
+
+
+@app.get("/api/backtest/mcpt/{stock_code}")
+async def api_mcpt_backtest(stock_code: str, years: int = 3, permutations: int = 500):
+    """
+    MCPT 策略回測驗證。
+    執行「外資 Z-Score 突買」vs「KD 金叉」兩策略的樣本內/外顯著性檢驗。
+
+    Args:
+        stock_code: 台股代號 (例如 2330)
+        years: 歷史資料年數 (預設 3，最少需 IS+OOS=3 年)
+        permutations: MCPT 排列次數 (預設 500，越多越準確但越慢)
+    """
+    import asyncio
+    from app.services.mcpt_service import run_mcpt_web
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, run_mcpt_web, stock_code, years, permutations)
+    return result
+
 
 # --- Theme Scanner Endpoint ---
 

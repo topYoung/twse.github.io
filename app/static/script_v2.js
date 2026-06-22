@@ -266,6 +266,7 @@ async function openChart(stockCode, stockName, category) {
     // Format: "[Category] Code (Name) 走勢圖"
     const categoryLabel = category ? `[${category}] ` : '';
     chartTitle.textContent = `${categoryLabel}${stockCode} (${stockName}) 走勢圖`;
+    chartTitle.dataset.code = stockCode;  // BSR 分點查詢用
     chartSection.classList.remove('hidden');
 
     // Reset Header Info (Clear Stale Data)
@@ -1401,7 +1402,8 @@ async function runComprehensiveAnalysis() {
         'pressure': '/api/pressure-stocks?min_days=2',
         'trend_radar': '/api/trend-radar-stocks',
         'trust_ratio': '/api/scanner/chips/trust-ratio',
-        'dealer_buy': '/api/scanner/chips/dealer-buy'
+        'dealer_buy': '/api/scanner/chips/dealer-buy',
+        'foreign_surge': '/api/scanner/chips/foreign-surge'
     };
 
     try {
@@ -2228,6 +2230,7 @@ function createPressureStockCard(stock) {
         <div class="stock-info-row" style="margin-top: 5px; font-size: 0.85em; color: #8b949e;">
             <span>連跌 ${stock.consecutive_drop_days} 天</span>
             <span>上影線佔比: ${stock.today_shadow_ratio}%</span>
+            <span style="color: ${stock.vol_ratio <= 0.6 ? '#f0883e' : '#79c0ff'}">量比: ${stock.vol_ratio != null ? Math.round(stock.vol_ratio * 100) + '%' : '-'}</span>
         </div>
         <div class="stock-tags">
             ${tagsHtml}
@@ -2776,6 +2779,8 @@ function createTrendRadarCard(stock, type) {
                 <div>RSI: <span style="color: #c9d1d9;">${stock.rsi || '-'}</span></div>
                 <div>KD: <span style="color: #c9d1d9;">${stock.kd_k||'-'}/${stock.kd_d||'-'}</span></div>
                 <div>MACD紅柱: <span style="color: ${(stock.macd_hist || 0) > 0 ? '#da3633' : '#238636'}">${stock.macd_hist||'-'}</span></div>
+                <div>月增率(MOM): <span style="color: ${stock.mom == null ? '#8b949e' : stock.mom >= 0 ? '#da3633' : '#238636'}">${stock.mom != null ? (stock.mom > 0 ? '+' : '') + stock.mom + '%' : '-'}</span></div>
+                <div>年增率(YOY): <span style="color: ${stock.yoy == null ? '#8b949e' : stock.yoy > 0 ? '#da3633' : '#238636'}">${stock.yoy != null ? (stock.yoy > 0 ? '+' : '') + stock.yoy + '%' : '-'}</span></div>
             </div>
         </div>
     `;
@@ -2905,6 +2910,180 @@ function closeDealerBuyModal() {
     if (modal) modal.classList.add('hidden');
 }
 
+async function openForeignSurgeModal() {
+    const modal = document.getElementById('foreign-surge-modal');
+    const loading = document.getElementById('foreign-surge-loading');
+    const container = document.getElementById('foreign-surge-list');
+
+    modal.classList.remove('hidden');
+    loading.classList.remove('hidden');
+    container.innerHTML = '';
+
+    try {
+        const response = await fetch('/api/scanner/chips/foreign-surge');
+        const stocks = await response.json();
+
+        loading.classList.add('hidden');
+        if (!stocks || stocks.length === 0) {
+            container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#8b949e;">今日無外資突然大買的股票</div>';
+            return;
+        }
+
+        stocks.forEach(stock => {
+            const card = document.createElement('div');
+            card.className = 'stock-card layout-stock-card';
+            card.onclick = () => openChart(stock.code, stock.name, stock.category || '外資突買');
+
+            const surgeLabel = stock.z_score >= 50
+                ? 'Z >> 50 (首次大買)'
+                : `Z = ${stock.z_score}`;
+
+            const zColor = stock.z_score >= 3 ? '#f85149' : stock.z_score >= 2 ? '#f0883e' : '#79c0ff';
+
+            card.innerHTML = `
+                <div class="card-header">
+                    <div class="stock-identity">
+                        <span class="stock-name">${stock.name || stock.code}</span>
+                        <span class="stock-code-small">${stock.code}</span>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <span class="badge" style="background:#79c0ff;color:black;font-weight:bold;">買超 ${stock.foreign_net_buy}張</span>
+                        <span class="badge" style="background:${zColor};color:black;font-weight:bold;">⚡ ${surgeLabel}</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="layout-stats" style="grid-template-columns:repeat(3,1fr);">
+                        <div class="layout-stat-item">
+                            <span class="stat-label">今日價格</span>
+                            <span class="stat-value" style="color:${(stock.change || 0) >= 0 ? '#da3633' : '#238636'}">${stock.price || '--'}</span>
+                        </div>
+                        <div class="layout-stat-item">
+                            <span class="stat-label">成交量</span>
+                            <span class="stat-value">${stock.volume || '--'} 張</span>
+                        </div>
+                        <div class="layout-stat-item">
+                            <span class="stat-label">252日均買超</span>
+                            <span class="stat-value">${stock.hist_mean} 張</span>
+                        </div>
+                        <div class="layout-stat-item">
+                            <span class="stat-label">252日標準差</span>
+                            <span class="stat-value">${stock.hist_std} 張</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            container.appendChild(card);
+        });
+    } catch(err) {
+        console.error(err);
+        loading.classList.add('hidden');
+        container.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#f85149;">載入失敗</div>';
+    }
+}
+
+function closeForeignSurgeModal() {
+    const modal = document.getElementById('foreign-surge-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+// ── BSR 分點查詢 ──────────────────────────────────────────────────────────────
+let _bsrCurrentCode = null;
+
+async function openBsrModal() {
+    // 從目前圖表標題取得股票代號
+    const titleEl = document.getElementById('chart-title');
+    const code = titleEl ? titleEl.dataset.code : null;
+    if (!code) {
+        alert('請先開啟個股走勢圖，再點選分點查詢');
+        return;
+    }
+    _bsrCurrentCode = code;
+
+    const modal   = document.getElementById('bsr-modal');
+    const loading = document.getElementById('bsr-loading');
+    const content = document.getElementById('bsr-content');
+    const title   = document.getElementById('bsr-modal-title');
+
+    title.textContent = `🏦 分點買賣明細 — ${code}`;
+    modal.classList.remove('hidden');
+    loading.classList.remove('hidden');
+    content.innerHTML = '';
+
+    try {
+        const resp = await fetch(`/api/scanner/chips/bsr/${code}`);
+        const data = await resp.json();
+        loading.classList.add('hidden');
+        renderBsrContent(data);
+    } catch (err) {
+        loading.classList.add('hidden');
+        content.innerHTML = '<div style="color:#f85149;padding:20px;">載入失敗，請稍後重試</div>';
+    }
+}
+
+function renderBsrContent(data) {
+    const content = document.getElementById('bsr-content');
+    if (data.error) {
+        content.innerHTML = `<div style="color:#f85149;padding:20px;">${data.error}</div>`;
+        return;
+    }
+    if (!data.brokers || data.brokers.length === 0) {
+        content.innerHTML = `<div style="color:#8b949e;padding:20px;">${data.note || '無分點資料'}</div>`;
+        return;
+    }
+
+    const concColor = data.concentration >= 60 ? '#f85149' : data.concentration >= 40 ? '#f0883e' : '#79c0ff';
+    const netBuy = data.total_buy - data.total_sell;
+
+    let html = `
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;padding:12px;background:#161b22;border-radius:6px;">
+            <div style="text-align:center;">
+                <div style="color:#8b949e;font-size:0.8em;">前3大集中度</div>
+                <div style="color:${concColor};font-size:1.4em;font-weight:bold;">${data.concentration}%</div>
+            </div>
+            <div style="text-align:center;">
+                <div style="color:#8b949e;font-size:0.8em;">合計買超</div>
+                <div style="color:${netBuy >= 0 ? '#da3633' : '#238636'};font-size:1.4em;font-weight:bold;">${netBuy} 張</div>
+            </div>
+            <div style="text-align:center;">
+                <div style="color:#8b949e;font-size:0.8em;">資料日期</div>
+                <div style="color:#c9d1d9;font-size:1em;">${data.date}</div>
+            </div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:0.85em;">
+            <thead>
+                <tr style="color:#8b949e;border-bottom:1px solid #30363d;">
+                    <th style="text-align:left;padding:6px 8px;">券商</th>
+                    <th style="text-align:right;padding:6px 8px;">買進(張)</th>
+                    <th style="text-align:right;padding:6px 8px;">賣出(張)</th>
+                    <th style="text-align:right;padding:6px 8px;">買賣超</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    const topRows = data.top_buyers.slice(0, 15);
+    topRows.forEach((b, i) => {
+        const netColor = b.net_shares >= 0 ? '#da3633' : '#238636';
+        const bg = i % 2 === 0 ? '' : 'background:#161b22;';
+        html += `
+            <tr style="${bg}">
+                <td style="padding:5px 8px;color:#c9d1d9;">${b.broker_name}</td>
+                <td style="text-align:right;padding:5px 8px;color:#c9d1d9;">${b.buy_shares}</td>
+                <td style="text-align:right;padding:5px 8px;color:#8b949e;">${b.sell_shares}</td>
+                <td style="text-align:right;padding:5px 8px;color:${netColor};font-weight:bold;">${b.net_shares > 0 ? '+' : ''}${b.net_shares}</td>
+            </tr>
+        `;
+    });
+
+    html += `</tbody></table>`;
+    content.innerHTML = html;
+}
+
+function closeBsrModal() {
+    const modal = document.getElementById('bsr-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
 // Ensure modals close when clicked outside
 window.addEventListener('click', (event) => {
     const trustRatioModal = document.getElementById('trust-ratio-modal');
@@ -2912,7 +3091,252 @@ window.addEventListener('click', (event) => {
     
     const dealerBuyModal = document.getElementById('dealer-buy-modal');
     if (event.target === dealerBuyModal) closeDealerBuyModal();
+
+    const foreignSurgeModal = document.getElementById('foreign-surge-modal');
+    if (event.target === foreignSurgeModal) closeForeignSurgeModal();
+
+    const bsrModal = document.getElementById('bsr-modal');
+    if (event.target === bsrModal) closeBsrModal();
+
+    const mcptModal = document.getElementById('mcpt-modal');
+    if (event.target === mcptModal) closeMcptModal();
 });
+
+// ── MCPT 策略回測驗證 ────────────────────────────────────────────────────────
+
+function openMcptModal() {
+    const modal = document.getElementById('mcpt-modal');
+    modal.classList.remove('hidden');
+
+    // 預填目前圖表的股票代號
+    const titleEl = document.getElementById('chart-title');
+    if (titleEl && titleEl.dataset.code) {
+        document.getElementById('mcpt-input-code').value = titleEl.dataset.code;
+    }
+    document.getElementById('mcpt-content').innerHTML = '';
+    document.getElementById('mcpt-loading').classList.add('hidden');
+}
+
+function closeMcptModal() {
+    document.getElementById('mcpt-modal').classList.add('hidden');
+}
+
+async function runMcptBacktest() {
+    const code  = document.getElementById('mcpt-input-code').value.trim();
+    const years = document.getElementById('mcpt-input-years').value;
+    const perm  = document.getElementById('mcpt-input-perm').value;
+
+    if (!code) { alert('請輸入股票代號'); return; }
+
+    const loading = document.getElementById('mcpt-loading');
+    const content = document.getElementById('mcpt-content');
+    loading.classList.remove('hidden');
+    loading.textContent = `正在執行 ${code} MCPT 回測（${perm} 次排列，約 20-40 秒）...`;
+    content.innerHTML = '';
+
+    try {
+        const resp = await fetch(`/api/backtest/mcpt/${code}?years=${years}&permutations=${perm}`);
+        if (!resp.ok) throw new Error(await resp.text());
+        const data = await resp.json();
+        loading.classList.add('hidden');
+        renderMcptResults(data);
+    } catch (err) {
+        loading.classList.add('hidden');
+        content.innerHTML = `<div style="color:#f85149;padding:20px;">回測失敗：${err.message}</div>`;
+    }
+}
+
+function renderMcptResults(data) {
+    if (data.error) {
+        document.getElementById('mcpt-content').innerHTML =
+            `<div style="color:#f85149;padding:20px;">${data.error}</div>`;
+        return;
+    }
+
+    const simNote = data.data_source === 'simulated'
+        ? '<div style="color:#d29922;padding:6px 12px;background:rgba(210,153,34,0.1);border-radius:4px;font-size:0.8em;margin-bottom:12px;">⚠️ 外資資料無法取得，使用模擬資料（僅供參考）</div>'
+        : '';
+
+    const stratLabels = {
+        foreign_zscore: '外資 Z-Score 突買',
+        kd_cross: 'KD 金叉（對照）',
+    };
+    const stratColors = {
+        foreign_zscore: '#f0883e',
+        kd_cross: '#58a6ff',
+    };
+
+    let html = simNote;
+
+    // ── 週期說明 ──
+    html += `
+    <div style="display:flex;gap:20px;margin-bottom:16px;font-size:0.82em;color:#8b949e;">
+        <span>📅 IS（樣本內）：${data.is_period.start} ~ ${data.is_period.end}</span>
+        <span>📅 OOS（樣本外）：${data.oos_period.start} ~ ${data.oos_period.end}</span>
+        <span>🔁 排列次數：${data.n_perm}</span>
+    </div>`;
+
+    // ── 績效比較表 ──
+    html += `
+    <table style="width:100%;border-collapse:collapse;font-size:0.84em;margin-bottom:20px;">
+        <thead>
+            <tr style="color:#8b949e;border-bottom:1px solid #30363d;">
+                <th style="text-align:left;padding:7px 8px;">指標</th>
+                <th style="text-align:center;padding:7px 8px;color:#f0883e;">外資Z-Score IS</th>
+                <th style="text-align:center;padding:7px 8px;color:#f0883e;">外資Z-Score OOS</th>
+                <th style="text-align:center;padding:7px 8px;color:#58a6ff;">KD金叉 IS</th>
+                <th style="text-align:center;padding:7px 8px;color:#58a6ff;">KD金叉 OOS</th>
+            </tr>
+        </thead>
+        <tbody>`;
+
+    const rowDefs = [
+        ['交易次數', 'n_trades', '次', false],
+        ['勝率',    'win_rate', '%',  false],
+        ['平均報酬', 'avg_ret', '%',  true],
+        ['累計報酬', 'cum_ret', '%',  true],
+        ['最大回撤', 'max_dd',  '%',  true],
+        ['夏普比率', 'sharpe',  '',   true],
+    ];
+
+    const keys = [
+        ['foreign_zscore', 'is'],
+        ['foreign_zscore', 'oos'],
+        ['kd_cross',       'is'],
+        ['kd_cross',       'oos'],
+    ];
+
+    rowDefs.forEach(([label, key, unit, colorize], ri) => {
+        const bg = ri % 2 === 0 ? '' : 'background:#161b22;';
+        html += `<tr style="${bg}"><td style="padding:6px 8px;color:#c9d1d9;">${label}</td>`;
+        keys.forEach(([strat, period]) => {
+            const val = data.strategies?.[strat]?.[period]?.stats?.[key] ?? '-';
+            let color = '#c9d1d9';
+            if (colorize && typeof val === 'number') {
+                color = val > 0 ? '#3fb950' : val < 0 ? '#f85149' : '#8b949e';
+            }
+            html += `<td style="text-align:center;padding:6px 8px;color:${color};">${val}${typeof val === 'number' ? unit : ''}</td>`;
+        });
+        html += `</tr>`;
+    });
+
+    // MCPT p-value row
+    html += `<tr><td style="padding:6px 8px;color:#c9d1d9;font-weight:bold;">MCPT p值</td>`;
+    keys.forEach(([strat, period]) => {
+        const pv  = data.strategies?.[strat]?.[period]?.mcpt?.p_value;
+        const sig = typeof pv === 'number' && pv < 0.05;
+        const color = sig ? '#3fb950' : '#8b949e';
+        const label = typeof pv === 'number' ? `${pv.toFixed(3)} ${sig ? '✅' : '❌'}` : '-';
+        html += `<td style="text-align:center;padding:6px 8px;color:${color};font-weight:bold;">${label}</td>`;
+    });
+    html += `</tr></tbody></table>`;
+
+    // ── 排列分布直方圖（2×2 Grid）──
+    html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">`;
+
+    ['foreign_zscore', 'kd_cross'].forEach(strat => {
+        ['is', 'oos'].forEach(period => {
+            const mcpt  = data.strategies?.[strat]?.[period]?.mcpt ?? {};
+            const label = `${stratLabels[strat]} ${period === 'is' ? 'IS（樣本內）' : 'OOS（樣本外）'}`;
+            const color = stratColors[strat];
+            const canvasId = `mcpt-canvas-${strat}-${period}`;
+            const pv  = mcpt.p_value;
+            const sig = typeof pv === 'number' && pv < 0.05;
+            const pLabel = typeof pv === 'number' ? `p=${pv.toFixed(3)} ${sig ? '✅顯著' : '❌不顯著'}` : '';
+            html += `
+            <div style="background:#161b22;border-radius:6px;padding:12px;">
+                <div style="color:#c9d1d9;font-size:0.82em;margin-bottom:4px;font-weight:bold;">${label}</div>
+                <div style="color:${sig ? '#3fb950' : '#8b949e'};font-size:0.78em;margin-bottom:6px;">${pLabel} | 夏普=${mcpt.obs_sharpe ?? '-'} | 交易=${mcpt.n_trades ?? 0}次</div>
+                <canvas id="${canvasId}" width="360" height="160" style="width:100%;max-width:400px;"></canvas>
+            </div>`;
+        });
+    });
+
+    html += `</div>`;
+    document.getElementById('mcpt-content').innerHTML = html;
+
+    // ── 繪製 Canvas 直方圖 ──
+    ['foreign_zscore', 'kd_cross'].forEach(strat => {
+        ['is', 'oos'].forEach(period => {
+            const mcpt  = data.strategies?.[strat]?.[period]?.mcpt ?? {};
+            const perms = mcpt.perm_sharpes ?? [];
+            const obs   = mcpt.obs_sharpe ?? 0;
+            const color = stratColors[strat];
+            const canvasId = `mcpt-canvas-${strat}-${period}`;
+            drawMcptHistogram(canvasId, perms, obs, color);
+        });
+    });
+}
+
+function drawMcptHistogram(canvasId, perms, obs, barColor) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || perms.length === 0) return;
+
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const PAD = { top: 10, right: 10, bottom: 30, left: 30 };
+    const innerW = W - PAD.left - PAD.right;
+    const innerH = H - PAD.top  - PAD.bottom;
+
+    ctx.fillStyle = '#161b22';
+    ctx.fillRect(0, 0, W, H);
+
+    const min = Math.min(...perms, obs);
+    const max = Math.max(...perms, obs);
+    const range = max - min || 1;
+    const nBins = 30;
+    const binW  = range / nBins;
+
+    // 分箱
+    const bins = new Array(nBins).fill(0);
+    perms.forEach(v => {
+        const i = Math.min(Math.floor((v - min) / binW), nBins - 1);
+        bins[i]++;
+    });
+    const maxCount = Math.max(...bins, 1);
+
+    // 繪製 bars
+    bins.forEach((count, i) => {
+        const bx = PAD.left + (i / nBins) * innerW;
+        const bh = (count / maxCount) * innerH;
+        const by = PAD.top + innerH - bh;
+        const bw = innerW / nBins - 1;
+        ctx.fillStyle = '#30363d';
+        ctx.fillRect(bx, by, bw, bh);
+    });
+
+    // obs 實際值線
+    const obsX = PAD.left + ((obs - min) / range) * innerW;
+    ctx.strokeStyle = barColor;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(obsX, PAD.top);
+    ctx.lineTo(obsX, PAD.top + innerH);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 標籤
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(min.toFixed(2), PAD.left, H - 6);
+    ctx.textAlign = 'right';
+    ctx.fillText(max.toFixed(2), W - PAD.right, H - 6);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = barColor;
+    ctx.fillText(`實際=${obs.toFixed(2)}`, obsX, PAD.top + 8);
+
+    // X 軸
+    ctx.strokeStyle = '#30363d';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(PAD.left, PAD.top + innerH);
+    ctx.lineTo(W - PAD.right, PAD.top + innerH);
+    ctx.stroke();
+}
+
+
 
 
 window.openComboSuggestionModal = function() {

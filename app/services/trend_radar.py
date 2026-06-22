@@ -7,6 +7,7 @@ from app.services.yf_rate_limiter import fetch_stock_history
 from app.services.indicators import compute_kd, compute_rsi, compute_macd, compute_macd_with_trend
 from app.services.institutional_data import get_latest_institutional_data
 from app.services.breakout_scanner import detect_lower_shadow_after_decline, analyze_volume_trend
+from app.services.revenue_service import get_revenue_map
 import threading
 import time
 from datetime import datetime
@@ -40,13 +41,14 @@ def get_trend_radar_stocks(force_refresh=False, tech_only=True):
     else:
         all_stocks = list(set(TECH_STOCKS + TRAD_STOCKS + keys_from_map))
     inst_data = get_latest_institutional_data()
+    revenue_map = get_revenue_map()
 
     potential_results = []
     strong_results = []
 
     try:
         with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = [executor.submit(check_trend_radar, code, inst_data) for code in all_stocks]
+            futures = [executor.submit(check_trend_radar, code, inst_data, revenue_map) for code in all_stocks]
             for future in futures:
                 try:
                     res = future.result()
@@ -92,7 +94,7 @@ def safe_round(v, d=2):
     if v is None or not math.isfinite(float(v)): return None
     return round(float(v), d)
 
-def check_trend_radar(stock_code, inst_data_map):
+def check_trend_radar(stock_code, inst_data_map, revenue_map=None):
     try:
         inst = inst_data_map.get(stock_code, {})
         inst_net = inst.get('total', 0)
@@ -189,7 +191,14 @@ def check_trend_radar(stock_code, inst_data_map):
             
         if not is_potential and not is_strong:
             return None
-            
+
+        # 營收過濾：YOY 必須 > 0（若無資料則放行）
+        rev_info = (revenue_map or {}).get(stock_code, {})
+        yoy = rev_info.get('yoy')
+        mom = rev_info.get('mom')
+        if yoy is not None and yoy <= 0:
+            return None
+
         import twstock
         category = STOCK_SUB_CATEGORIES.get(stock_code, '其他')
         name = twstock.codes[stock_code].name if stock_code in twstock.codes else stock_code
@@ -211,7 +220,9 @@ def check_trend_radar(stock_code, inst_data_map):
             "kd_d": safe_round(d, 1),
             "macd_hist": safe_round(macd_hist, 3),
             "position_pct": safe_round(position_pct * 100, 1),
-            "type": result_type
+            "type": result_type,
+            "mom": safe_round(mom, 2) if mom is not None else None,
+            "yoy": safe_round(yoy, 2) if yoy is not None else None
         }
     except Exception as e:
         return None

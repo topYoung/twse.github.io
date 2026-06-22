@@ -38,10 +38,15 @@ def check_pressure_reduction(stock_code, min_days=2):
         # 取得最新收盤價
         current_price = hist['Close'].iloc[-1]
         
-        # 過濾成交量：平均大於 500 張
-        avg_volume = hist['Volume'].tail(5).mean()
-        if avg_volume < 500 * 1000:
+        # 過濾成交量：5日平均大於 500 張
+        avg_vol_5 = float(hist['Volume'].tail(5).mean())
+        if avg_vol_5 < 500 * 1000:
             return None
+
+        # 量縮計算：今日量 vs 5日均量
+        today_vol = float(hist['Volume'].iloc[-1])
+        vol_ratio = today_vol / avg_vol_5 if avg_vol_5 > 0 else 1.0
+        is_vol_contracting = vol_ratio < 0.8  # 今日量 < 5日均量 80% 視為量縮
 
         # 資料準備
         closes = hist['Close'].tolist()
@@ -95,7 +100,10 @@ def check_pressure_reduction(stock_code, min_days=2):
         is_pressure_reduced = (today_shadow < yesterday_shadow)
         is_no_pressure = (today_shadow_ratio < 0.003) # 0.3% 以內視為幾乎無上影線
         
+        # 上影線條件 + 量縮條件必須同時成立
         if not (is_pressure_reduced or is_no_pressure):
+            return None
+        if not is_vol_contracting:
             return None
             
         # 準備回傳資料
@@ -120,6 +128,9 @@ def check_pressure_reduction(stock_code, min_days=2):
         elif is_pressure_reduced:
             tags.append("🛡️賣壓減輕")
 
+        if is_vol_contracting:
+            tags.append(f"📉量縮({round(vol_ratio * 100)}%)")
+
         return {
             "code": stock_code,
             "name": stock_name,
@@ -127,7 +138,9 @@ def check_pressure_reduction(stock_code, min_days=2):
             "price": float(round(current_price, 2)),
             "change": float(round(change, 2)),
             "change_percent": float(round(change_pct, 2)),
-            "volume": int(hist['Volume'].iloc[-1]),
+            "volume": int(today_vol),
+            "avg_vol_5": int(avg_vol_5),
+            "vol_ratio": float(round(vol_ratio, 2)),
             "consecutive_drop_days": int(consecutive_drop_days),
             "is_sharp_drop": bool(is_sharp_drop if 'is_sharp_drop' in locals() else False),
             "today_shadow_ratio": float(round(today_shadow_ratio * 100, 2)),

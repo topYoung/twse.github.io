@@ -122,6 +122,10 @@
                         <button class="investor-btn" onclick="openLayoutStocksModalV2('foreign', '外資')">
                             <span class="icon">🌍</span> 外資
                         </button>
+                        <button class="investor-btn" onclick="openForeignSurgeModal()"
+                            style="border: 1px solid #79c0ff; color: #79c0ff; font-weight: bold; background: rgba(121,192,255,0.1);">
+                            <span class="icon">⚡</span> 外資突買
+                        </button>
                         <button class="investor-btn" onclick="openLayoutStocksModalV2('trust', '投信')">
                             <span class="icon">🏦</span> 投信
                         </button>
@@ -260,6 +264,9 @@
             <label class="checkbox-label">
                 <input type="checkbox" name="strategy" value="dealer_buy"> 🏦 自營商作帳
             </label>
+            <label class="checkbox-label">
+                <input type="checkbox" name="strategy" value="foreign_surge"> ⚡ 外資突然大買
+            </label>
         </div>
     </div>
 
@@ -289,6 +296,8 @@
             </div>
         </div>
         <button id="close-chart">關閉</button>
+        <button onclick="openBsrModal()" style="margin-left:8px; background: rgba(88,166,255,0.1); border: 1px solid #58a6ff; color: #58a6ff; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.9em;">🏦 分點查詢</button>
+        <button onclick="openMcptModal()" style="margin-left:6px; background: rgba(210,153,34,0.1); border: 1px solid #d29922; color: #d29922; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.9em;">📊 MCPT回測</button>
         <div id="chart-container"></div>
         <!-- MA Legend -->
         <div class="ma-legend">
@@ -703,6 +712,76 @@
             <div id="dealer-buy-loading" class="loading-spinner hidden">正在跨市場掃描籌碼，請稍候...</div>
             <div id="dealer-buy-list" class="stock-grid">
                 <!-- 列表將在這裡產生 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 外資突然大買 Modal -->
+    <div id="foreign-surge-modal" class="modal hidden">
+        <div class="modal-content investor-modal-content" style="max-width: 1000px;">
+            <div class="modal-header">
+                <h2>🌍⚡ 外資突然大買 (Z-Score ≥ 2.0，距 252 日均值 2 個標準差)</h2>
+                <button class="close-modal-btn" onclick="closeForeignSurgeModal()">✕</button>
+            </div>
+            <div id="foreign-surge-loading" class="loading-spinner hidden">正在掃描外資異常買超，請稍候...</div>
+            <div id="foreign-surge-list" class="stock-grid">
+                <!-- 列表將在這裡產生 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- BSR 分點查詢 Modal -->
+    <div id="bsr-modal" class="modal hidden">
+        <div class="modal-content investor-modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h2 id="bsr-modal-title">🏦 分點買賣明細</h2>
+                <button class="close-modal-btn" onclick="closeBsrModal()">✕</button>
+            </div>
+            <div id="bsr-loading" class="loading-spinner hidden">正在解析分點資料（需解CAPTCHA，約5~15秒）...</div>
+            <div id="bsr-content">
+                <!-- 分點資料將在這裡產生 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- MCPT 回測驗證 Modal -->
+    <div id="mcpt-modal" class="modal hidden">
+        <div class="modal-content investor-modal-content" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
+            <div class="modal-header">
+                <h2 id="mcpt-modal-title">📊 MCPT 策略回測驗證</h2>
+                <button class="close-modal-btn" onclick="closeMcptModal()">✕</button>
+            </div>
+            <!-- 參數設定 -->
+            <div id="mcpt-params" style="display:flex; gap:16px; align-items:flex-end; padding:16px; background:#161b22; border-radius:6px; margin-bottom:16px; flex-wrap:wrap;">
+                <div>
+                    <label style="color:#8b949e; font-size:0.8em; display:block; margin-bottom:4px;">股票代號</label>
+                    <input id="mcpt-input-code" type="text" value="" placeholder="例如 2330"
+                        style="background:#0d1117; border:1px solid #30363d; color:#c9d1d9; padding:6px 10px; border-radius:4px; width:90px;">
+                </div>
+                <div>
+                    <label style="color:#8b949e; font-size:0.8em; display:block; margin-bottom:4px;">歷史年數</label>
+                    <select id="mcpt-input-years"
+                        style="background:#0d1117; border:1px solid #30363d; color:#c9d1d9; padding:6px 10px; border-radius:4px;">
+                        <option value="3" selected>3 年</option>
+                        <option value="4">4 年</option>
+                        <option value="5">5 年</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="color:#8b949e; font-size:0.8em; display:block; margin-bottom:4px;">排列次數</label>
+                    <select id="mcpt-input-perm"
+                        style="background:#0d1117; border:1px solid #30363d; color:#c9d1d9; padding:6px 10px; border-radius:4px;">
+                        <option value="300">300 次（快速）</option>
+                        <option value="500" selected>500 次（標準）</option>
+                        <option value="1000">1000 次（精準）</option>
+                    </select>
+                </div>
+                <button onclick="runMcptBacktest()"
+                    style="background:#d29922; color:#0d1117; font-weight:bold; border:none; padding:8px 20px; border-radius:4px; cursor:pointer;">▶ 執行回測</button>
+            </div>
+            <div id="mcpt-loading" class="loading-spinner hidden" style="text-align:center; padding:20px; color:#8b949e;">正在執行 MCPT 回測，請稍候（約 20-40 秒）...</div>
+            <div id="mcpt-content">
+                <!-- 結果將在這裡產生 -->
             </div>
         </div>
     </div>
