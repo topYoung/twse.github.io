@@ -3355,3 +3355,189 @@ window.addEventListener('click', (event) => {
         window.closeComboSuggestionModal();
     }
 });
+
+
+// ============================================================
+// 寶塔線翻強 + 資券協同 Top2
+// ============================================================
+
+function openTowerTrendModal() {
+    document.getElementById('tower-trend-modal').classList.remove('hidden');
+    fetchTowerTrendStocks();
+}
+
+function closeTowerTrendModal() {
+    document.getElementById('tower-trend-modal').classList.add('hidden');
+}
+
+async function fetchTowerTrendStocks() {
+    const loading = document.getElementById('tower-trend-loading');
+    const listEl = document.getElementById('tower-trend-list');
+
+    loading.classList.remove('hidden');
+    listEl.innerHTML = '';
+
+    const topNEl = document.getElementById('tower-trend-top-n');
+    const topN = topNEl ? topNEl.value : 5;
+
+    try {
+        const resp = await fetch(`/api/scanner/chips/tower-trend?top_n=${topN}`);
+        const data = await resp.json();
+        loading.classList.add('hidden');
+        renderTowerTrendResult(data, listEl);
+    } catch (err) {
+        loading.classList.add('hidden');
+        listEl.innerHTML = `<p style="color:#f85149;text-align:center;padding:30px;">錯誤：${err}</p>`;
+    }
+}
+
+function renderTowerTrendResult(data, container) {
+    if (data.status === 'error') {
+        container.innerHTML = `<p style="color:#f85149;text-align:center;padding:30px;">${data.message || '掃描失敗，請稍後重試'}</p>`;
+        return;
+    }
+
+    const results = data.results || [];
+
+    // 統計列
+    const statsHtml = `
+        <div style="display:flex;gap:16px;font-size:0.82em;color:#8b949e;padding:8px 4px 16px;">
+            <span>📅 資料日期：<strong style="color:#c9d1d9;">${data.date || '--'}</strong></span>
+            <span>🔍 掃描股票：<strong style="color:#c9d1d9;">${data.candidates ?? '--'}</strong> 支（融資≥100張且融券≥10張）</span>
+            <span>🔴 翻強命中：<strong style="color:#f0883e;">${data.tower_hit ?? '--'}</strong> 支</span>
+        </div>`;
+
+    if (results.length === 0) {
+        container.innerHTML = statsHtml + `
+            <p style="color:#8b949e;text-align:center;padding:30px;">
+                今日無符合條件股票（無寶塔線翻強 + 資券結構同時成立的個股）。
+            </p>`;
+        return;
+    }
+
+    // 產生卡片
+    const cardsHtml = results.map((s, idx) => renderTowerTrendCard(s, idx)).join('');
+    container.innerHTML = statsHtml + cardsHtml;
+}
+
+function renderTowerTrendCard(s, idx) {
+    // 分數顏色等級
+    const score = s.score ?? 0;
+    let scoreBg, scoreColor, cardBorder;
+    if (score >= 100) {
+        scoreBg = 'rgba(240,136,62,0.2)'; scoreColor = '#f0883e'; cardBorder = '#f0883e';
+    } else if (score >= 75) {
+        scoreBg = 'rgba(88,166,255,0.15)'; scoreColor = '#58a6ff'; cardBorder = '#58a6ff';
+    } else if (score >= 40) {
+        scoreBg = 'rgba(63,185,80,0.1)'; scoreColor = '#3fb950'; cardBorder = '#30363d';
+    } else {
+        scoreBg = '#21262d'; scoreColor = '#8b949e'; cardBorder = '#30363d';
+    }
+
+    // 漲跌顏色（台股：紅漲綠跌）
+    const chg = s.change_pct ?? 0;
+    const chgColor = chg >= 0 ? '#da3633' : '#238636';
+    const chgSign = chg >= 0 ? '+' : '';
+
+    // 資券變化標示
+    const mDelta = s.margin_delta ?? 0;
+    const sDelta = s.short_delta ?? 0;
+    const mSign = mDelta >= 0 ? '+' : '';
+    const sSign = sDelta >= 0 ? '+' : '';
+    const mColor = mDelta < 0 ? '#3fb950' : '#da3633';   // 資減=綠（好），資增=紅
+    const sColor = sDelta > 0 ? '#da3633' : '#3fb950';   // 券增=紅（好），券減=綠
+
+    // 排名裝飾
+    const rankEmoji = idx === 0 ? '🏆' : '🥈';
+    const rankLabel = s.top_rank || (idx === 0 ? '最高分' : '次高分');
+
+    return `
+    <div style="
+        background:#161b22;
+        border:2px solid ${cardBorder};
+        border-radius:10px;
+        padding:18px 20px;
+        margin-bottom:16px;
+        cursor:pointer;
+        transition:border-color 0.2s;
+    " onclick="searchStock('${s.code}')"
+       onmouseover="this.style.borderColor='#f0883e'" onmouseout="this.style.borderColor='${cardBorder}'">
+
+        <!-- 標題列 -->
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
+            <div>
+                <span style="font-size:1.3em;font-weight:bold;color:#c9d1d9;">${rankEmoji} ${s.name}</span>
+                <span style="color:#8b949e;margin-left:8px;font-size:0.9em;">${s.code}</span>
+                <div style="margin-top:6px;">
+                    <span style="background:rgba(240,136,62,0.2);color:#f0883e;font-size:0.8em;padding:2px 8px;border-radius:4px;font-weight:bold;">
+                        🗼 ${s.tower_label}
+                    </span>
+                    <span style="background:${scoreBg};color:${scoreColor};font-size:0.8em;padding:2px 8px;border-radius:4px;font-weight:bold;margin-left:6px;">
+                        ${rankLabel}
+                    </span>
+                </div>
+            </div>
+            <!-- 分數大圓 -->
+            <div style="text-align:center;">
+                <div style="
+                    width:72px;height:72px;border-radius:50%;
+                    background:${scoreBg};border:2px solid ${scoreColor};
+                    display:flex;flex-direction:column;align-items:center;justify-content:center;
+                ">
+                    <span style="font-size:1.5em;font-weight:bold;color:${scoreColor};">${score}</span>
+                    <span style="font-size:0.65em;color:#8b949e;">分</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 股價列 -->
+        <div style="display:flex;gap:20px;margin-top:14px;flex-wrap:wrap;">
+            <div>
+                <span style="color:#8b949e;font-size:0.8em;">現價</span>
+                <div style="font-size:1.4em;font-weight:bold;color:#c9d1d9;">${s.price ?? '--'}</div>
+                <div style="font-size:0.9em;color:${chgColor};font-weight:bold;">${chgSign}${chg.toFixed(2)}%</div>
+            </div>
+            <div style="border-left:1px solid #30363d;padding-left:16px;">
+                <span style="color:#8b949e;font-size:0.8em;">資券結構</span>
+                <div style="font-size:1.1em;font-weight:bold;color:#e3b341;margin-top:2px;">${s.structure ?? '--'}</div>
+                <div style="font-size:0.8em;color:#8b949e;margin-top:2px;">${s.rank_label}</div>
+            </div>
+            <div style="border-left:1px solid #30363d;padding-left:16px;">
+                <span style="color:#8b949e;font-size:0.8em;">翻強日量比</span>
+                <div style="font-size:1.1em;font-weight:bold;color:#c9d1d9;margin-top:2px;">${(s.vol_ratio ?? 0).toFixed(2)}x</div>
+                <div style="font-size:0.75em;color:${s.vol_ratio >= 1 ? '#3fb950' : '#8b949e'};">
+                    ${s.vol_ratio >= 1 ? '✅ 量能確認' : '⚠️ 量能不足'}
+                </div>
+            </div>
+            <div style="border-left:1px solid #30363d;padding-left:16px;">
+                <span style="color:#8b949e;font-size:0.8em;">券資比</span>
+                <div style="font-size:1.1em;font-weight:bold;color:#c9d1d9;margin-top:2px;">${s.short_ratio ?? '--'}%</div>
+                <div style="font-size:0.75em;color:${(s.short_ratio ?? 0) >= 20 ? '#da3633' : '#8b949e'};">
+                    ${(s.short_ratio ?? 0) >= 20 ? '🔥 高券資比' : '正常'}
+                </div>
+            </div>
+        </div>
+
+        <!-- 融資融券明細 -->
+        <div style="display:flex;gap:12px;margin-top:14px;background:#0d1117;padding:10px 14px;border-radius:6px;font-size:0.82em;flex-wrap:wrap;">
+            <span style="color:#8b949e;">融資餘額：
+                <strong style="color:#c9d1d9;">${(s.margin_today ?? 0).toLocaleString()} 張</strong>
+                <span style="color:${mColor};margin-left:4px;">(${mSign}${(mDelta ?? 0).toLocaleString()})</span>
+            </span>
+            <span style="color:#8b949e;margin-left:8px;">融券餘額：
+                <strong style="color:#c9d1d9;">${(s.short_today ?? 0).toLocaleString()} 張</strong>
+                <span style="color:${sColor};margin-left:4px;">(${sSign}${(sDelta ?? 0).toLocaleString()})</span>
+            </span>
+        </div>
+
+        <!-- 風險提示 -->
+        <div style="font-size:0.75em;color:#484f58;margin-top:8px;text-align:right;">
+            ⚠️ 指標為輔助工具，請配合大盤環境與個人風控判斷
+        </div>
+    </div>`;
+}
+
+// 背景點擊關閉
+document.getElementById('tower-trend-modal')?.addEventListener('click', function(e) {
+    if (e.target === this) closeTowerTrendModal();
+});

@@ -378,3 +378,18 @@ async def api_theme_scanner(
     from app.services.theme_scanner import get_theme_stocks
     theme_param = None if theme == "all" else theme
     return get_theme_stocks(theme_param, max_capital, min_score, force_refresh)
+
+
+@app.get("/api/scanner/chips/tower-trend")
+async def api_tower_trend(top_n: int = 5):
+    """
+    寶塔線 3T 翻強 + 資券協同掃描器
+
+    Args:
+        top_n: 回傳股票數量（預設 5，最大 20）
+    """
+    from app.services.chips_trend_scanner import scan_chips_trend_top2
+    top_n = max(1, min(top_n, 20))  # 限制 1~20
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, lambda: scan_chips_trend_top2(top_n))
+    return result

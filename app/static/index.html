@@ -81,6 +81,11 @@
                             style="border: 1px solid #ff7b72; color: #ff7b72; font-weight: bold; background: rgba(255, 123, 114, 0.1);">
                             <span class="icon">🔥</span> 動能趨勢雷達
                         </button>
+                        <!-- 寶塔線+資券 Top2 按鈕 -->
+                        <button class="investor-btn" onclick="openTowerTrendModal()"
+                            style="border: 1px solid #f0883e; color: #f0883e; font-weight: bold; background: rgba(240,136,62,0.15);">
+                            <span class="icon">🗼</span> 寶塔+資券Top2
+                        </button>
                         <!-- 新增籌碼按鈕 -->
                         <button class="investor-btn" onclick="openTrustRatioModal()"
                             style="border: 1px solid #d29922; color: #d29922; font-weight: bold; background: rgba(210, 153, 34, 0.1);">
@@ -888,6 +893,45 @@
 
             <div id="theme-scanner-loading" class="loading-spinner hidden">掃描中，請稍候（約30～60秒）...</div>
             <div id="theme-scanner-content"></div>
+        </div>
+    </div>
+
+    <!-- 寶塔線 + 資券協同 Top2 Modal -->
+    <div id="tower-trend-modal" class="modal hidden">
+        <div class="modal-content investor-modal-content" style="max-width: 860px;">
+            <div class="modal-header">
+                <h2>🗼 寶塔線翻強 + 資券協同 Top2</h2>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <label style="font-size:0.82em;color:#8b949e;">顯示筆數：</label>
+                    <select id="tower-trend-top-n" style="background:#21262d;border:1px solid #30363d;color:#cdd9e5;padding:3px 8px;border-radius:6px;font-size:0.85em;cursor:pointer;">
+                        <option value="2">Top 2</option>
+                        <option value="5" selected>Top 5</option>
+                        <option value="10">Top 10</option>
+                        <option value="20">Top 20</option>
+                    </select>
+                    <button onclick="fetchTowerTrendStocks()" style="background:#21262d;border:1px solid #30363d;color:#cdd9e5;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:0.85em;">🔄 重新掃描</button>
+                    <button class="close-modal-btn" onclick="closeTowerTrendModal()">✕</button>
+                </div>
+            </div>
+
+            <!-- 策略說明 -->
+            <div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:0.85em;color:#8b949e;line-height:1.7;">
+                <strong style="color:#f0883e;">策略邏輯：</strong>
+                寶塔線 3T 翻強（今日收盤突破前3根最高收盤）作為趨勢過濾器，
+                配合資券結構判斷籌碼情緒，評分矩陣如下：
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">
+                    <span style="background:rgba(240,136,62,0.2);color:#f0883e;padding:2px 8px;border-radius:4px;font-weight:bold;">🥇 資減券增 = 100分（黃金換手，軋空驅動）</span>
+                    <span style="background:rgba(88,166,255,0.15);color:#58a6ff;padding:2px 8px;border-radius:4px;">🥈 資增券增 = 75分（熱錢湧入）</span>
+                    <span style="background:rgba(63,185,80,0.1);color:#3fb950;padding:2px 8px;border-radius:4px;">資增券減 = 40分</span>
+                    <span style="background:#21262d;color:#8b949e;padding:2px 8px;border-radius:4px;">資減券減 = 20分</span>
+                    <span style="color:#e3b341;padding:2px 8px;">+15 翻強日量≥均量 | +10 券資比>20%</span>
+                </div>
+            </div>
+
+            <div id="tower-trend-loading" class="loading-spinner hidden">正在掃描全市場融資融券 + 寶塔線，請稍候（約需 1~3 分鐘）...</div>
+            <div id="tower-trend-list">
+                <!-- 結果由 JS 注入 -->
+            </div>
         </div>
     </div>
 
