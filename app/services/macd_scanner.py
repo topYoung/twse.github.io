@@ -78,17 +78,19 @@ def is_after_consolidation(close_series: pd.Series, hist: pd.Series, dif: pd.Ser
 
 
 
-def get_macd_breakout_stocks(tech_only: bool = True) -> List[Dict[str, Any]]:
+def get_macd_breakout_stocks(tech_only: bool = True, trad_only: bool = False) -> List[Dict[str, Any]]:
     """
     掃描股票，找出 BB+MACD 起漲訊號。
-    tech_only=True（預設）：只掃科技股；False：掃全市場。
+    tech_only=True（預設）：只掃科技股；trad_only=True：只掃傳產；兩者皆 False：掃全市場。
     """
     from app.services.categories import TECH_STOCKS, TRAD_STOCKS, STOCK_SUB_CATEGORIES, DELISTED_STOCKS
     import twstock
 
     # TECH_STOCKS 已涵蓋所有電子科技業；tech_only 時不加 STOCK_SUB_CATEGORIES.keys()
     # 因為 MANUAL_SUB_CATEGORIES 內含金融/航運/鋼鐵等非科技股
-    if tech_only:
+    if trad_only:
+        all_stock_codes = list(set(TRAD_STOCKS))
+    elif tech_only:
         all_stock_codes = list(set(TECH_STOCKS))
     else:
         keys_from_map = list(STOCK_SUB_CATEGORIES.keys())

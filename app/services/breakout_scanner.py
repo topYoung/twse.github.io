@@ -244,13 +244,14 @@ def detect_lower_shadow_after_decline(hist, decline_days=3, shadow_ratio=1.5):
     }
 
 
-def get_breakout_stocks(force_refresh=False):
+def get_breakout_stocks(force_refresh=False, trad_only: bool = False):
     """
     Scans for stocks that:
     1. Have been consolidating for 15-60 days (Box range < 15%)
     2. Have triggered a breakout today (Change > 3% OR Price > Box High)
     3. Consider previous day's Institutional Sudden Buy
     4. Consider real-time Bid/Ask Volume Ratio (Only during market hours)
+    trad_only=True: 只掃傳產股
     """
     try:
         global _breakout_cache
@@ -269,18 +270,21 @@ def get_breakout_stocks(force_refresh=False):
             cache_duration = 1800 # 盤後 30 分鐘更新一次
         
         with _cache_lock:
+            cache_key = f'trad_only={trad_only}'
             if not force_refresh and _breakout_cache["data"]:
                 last_ts = _breakout_cache["last_update"]
                 last_dt = datetime.fromtimestamp(last_ts)
-                
+
                 # Smart Refresh: Force update if we just transitioned into market hours
                 was_pre_market = last_dt.hour < 9 and last_dt.date() == now.date()
                 crossed_to_market = is_market_hours and was_pre_market
                 is_new_day = last_dt.date() != now.date()
-                
-                if not crossed_to_market and not is_new_day and (current_time - last_ts < cache_duration):
+
+                if (not crossed_to_market and not is_new_day
+                        and (current_time - last_ts < cache_duration)
+                        and _breakout_cache.get('cache_key') == cache_key):
                     res = _breakout_cache["data"]
-                    if isinstance(res, list): # Backward compatibility
+                    if isinstance(res, list):  # Backward compatibility
                         return {"stocks": res, "is_market_hours": is_market_hours, "is_pre_market": is_pre_market}
                     # Update current state if reusing cache
                     if isinstance(res, dict):
@@ -290,7 +294,10 @@ def get_breakout_stocks(force_refresh=False):
 
         # 1. Gather all target stocks
         keys_from_map = list(STOCK_SUB_CATEGORIES.keys())
-        all_stocks = list(set(TECH_STOCKS + TRAD_STOCKS + keys_from_map))
+        if trad_only:
+            all_stocks = list(set(TRAD_STOCKS))
+        else:
+            all_stocks = list(set(TECH_STOCKS + TRAD_STOCKS + keys_from_map))
         
         # 2. Get latest institutional data (one-time fetch)
         inst_data = get_latest_institutional_data()
@@ -359,6 +366,7 @@ def get_breakout_stocks(force_refresh=False):
         with _cache_lock:
             _breakout_cache["data"] = final_output
             _breakout_cache["last_update"] = current_time
+            _breakout_cache["cache_key"] = cache_key
             
         return final_output
     except Exception as e:

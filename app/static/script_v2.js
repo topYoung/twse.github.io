@@ -22,14 +22,36 @@ let chartIntervalId = null;
 let breakoutRefreshId = null;
 let _chartReturnModalId = null;  // 記住開圖前的來源 modal，關圖後自動還原
 
-// --- 只掃科技股 checkbox ---
+// --- 掃描範圍 radio ---
+function getScanSector() {
+    const radio = document.querySelector('input[name="scan-sector"]:checked');
+    return radio ? radio.value : 'tech';
+}
+function getSectorParam() {
+    return `sector=${getScanSector()}`;
+}
+// 向下相容舊程式碼（部分地方仍可能呼叫）
 function isTechOnly() {
-    const cb = document.getElementById('tech-only-checkbox');
-    return cb ? cb.checked : true;
+    return getScanSector() === 'tech';
 }
 function getTechParam() {
-    return `tech_only=${isTechOnly()}`;
+    return getSectorParam();
 }
+
+// radio 切換時更新提示文字
+document.addEventListener('DOMContentLoaded', () => {
+    const hintEl = document.getElementById('sector-hint');
+    const hints = {
+        tech: '（半導體、電腦、光電、通信、電子零組件、電子通路、資訊服務、其他電子）',
+        trad: '（水泥、食品、塑化、紡織、電機機械、電器電纜、鋼鐵、航運、建材營造等）',
+        all:  '（上市上櫃全部科技股 + 傳產股）'
+    };
+    document.querySelectorAll('input[name="scan-sector"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            if (hintEl) hintEl.textContent = hints[radio.value] || '';
+        });
+    });
+});
 
 // Initialization
 document.addEventListener('DOMContentLoaded', () => {

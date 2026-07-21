@@ -139,12 +139,14 @@ async def api_watchlist_check(codes: str):
     return get_stocks_realtime(stock_codes)
 
 @app.get("/api/breakout-stocks")
-async def api_breakout_stocks(tech_only: bool = True):
+async def api_breakout_stocks(tech_only: bool = True, sector: str = ""):
     """
     Get potential breakout stocks with signal classification (MACD-based)
-    Includes signal_type, signal_priority, and revenue_status
+    sector: 'tech'(科技) | 'trad'(傳產) | 'all'(全市場)。未傳入時使用 tech_only 參數。
     """
-    return get_macd_breakout_stocks(tech_only=tech_only)
+    trad_only = (sector == 'trad')
+    _tech_only = False if sector in ('trad', 'all') else tech_only
+    return get_macd_breakout_stocks(tech_only=_tech_only, trad_only=trad_only)
 
 @app.get("/api/rebound-stocks")
 async def api_rebound_stocks():
@@ -161,18 +163,24 @@ async def api_downtrend_stocks():
     return get_downtrend_stocks()
 
 @app.get("/api/macd-breakout-stocks")
-async def api_macd_breakout_stocks(tech_only: bool = True):
+async def api_macd_breakout_stocks(tech_only: bool = True, sector: str = ""):
     """
     Get MACD breakout stocks (histogram turning red or green shrinking with converging lines)
+    sector: 'tech' | 'trad' | 'all'
     """
-    return get_macd_breakout_stocks(tech_only=tech_only)
+    trad_only = (sector == 'trad')
+    _tech_only = False if sector in ('trad', 'all') else tech_only
+    return get_macd_breakout_stocks(tech_only=_tech_only, trad_only=trad_only)
 
 @app.get("/api/star-confirmed-stocks")
-async def api_star_confirmed_stocks(tech_only: bool = True):
+async def api_star_confirmed_stocks(tech_only: bool = True, sector: str = ""):
     """
     星級雙重確認：BB 起漲訊號 + 同日三大法人合計買超 > 0
+    sector: 'tech' | 'trad' | 'all'
     """
-    all_stocks = get_macd_breakout_stocks(tech_only=tech_only)
+    trad_only = (sector == 'trad')
+    _tech_only = False if sector in ('trad', 'all') else tech_only
+    all_stocks = get_macd_breakout_stocks(tech_only=_tech_only, trad_only=trad_only)
     items = all_stocks if isinstance(all_stocks, list) else all_stocks.get('stocks', [])
     confirmed = [
         s for s in items
@@ -260,23 +268,29 @@ async def api_twse_ex_dividend(days: int = 30):
 
 
 @app.get("/api/trend-radar-stocks")
-async def api_trend_radar_stocks(force_refresh: bool = False, tech_only: bool = True):
+async def api_trend_radar_stocks(force_refresh: bool = False, tech_only: bool = True, sector: str = ""):
     """
     Get trend & momentum radar stocks (Potential Breakout & Strong Momentum)
+    sector: 'tech' | 'trad' | 'all'
     """
     from app.services.trend_radar import get_trend_radar_stocks
-    return get_trend_radar_stocks(force_refresh, tech_only=tech_only)
+    trad_only = (sector == 'trad')
+    _tech_only = False if sector in ('trad', 'all') else tech_only
+    return get_trend_radar_stocks(force_refresh, tech_only=_tech_only, trad_only=trad_only)
 
 
 @app.get("/api/consolidation-stocks")
-async def api_consolidation_stocks(tech_only: bool = True):
+async def api_consolidation_stocks(tech_only: bool = True, sector: str = ""):
     """
     掃描盤整中（5天~3個月）或剛起漲（連漲2天內）的股票。
     每支股票附帶：盤整天數、箱型高低、近5日三大法人合計買賣超。
+    sector: 'tech' | 'trad' | 'all'
     """
     from app.services.consolidation_scanner import get_consolidation_stocks
+    trad_only = (sector == 'trad')
+    _tech_only = False if sector in ('trad', 'all') else tech_only
     stocks = await asyncio.get_event_loop().run_in_executor(
-        None, lambda: get_consolidation_stocks(tech_only=tech_only)
+        None, lambda: get_consolidation_stocks(tech_only=_tech_only, trad_only=trad_only)
     )
     return {'stocks': stocks, 'count': len(stocks)}
 

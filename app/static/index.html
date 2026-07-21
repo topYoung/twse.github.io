@@ -59,13 +59,24 @@
             </div>
         </header>
         <!-- 掃描範圍控制列 -->
-        <div style="background:#161b22; border-bottom:1px solid #30363d; padding:8px 24px; display:flex; align-items:center; gap:10px;">
-            <label style="display:flex; align-items:center; gap:7px; cursor:pointer; user-select:none; font-size:0.92em; color:#c9d1d9;">
-                <input type="checkbox" id="tech-only-checkbox" checked
-                    style="width:16px; height:16px; accent-color:#388bfd; cursor:pointer;">
-                <span>⚡ 只掃描科技股</span>
+        <div style="background:#161b22; border-bottom:1px solid #30363d; padding:8px 24px; display:flex; align-items:center; gap:20px; flex-wrap:wrap;">
+            <span style="font-size:0.85em; color:#8b949e; white-space:nowrap;">🎯 掃描範圍：</span>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none; font-size:0.92em; color:#c9d1d9;">
+                <input type="radio" name="scan-sector" id="sector-tech" value="tech" checked
+                    style="accent-color:#388bfd; cursor:pointer;">
+                <span>⚡ 科技股</span>
             </label>
-            <span id="tech-only-hint" style="font-size:0.78em; color:#8b949e;">（半導體、電腦、光電、通信、電子零組件、電子通路、資訊服務、其他電子）</span>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none; font-size:0.92em; color:#c9d1d9;">
+                <input type="radio" name="scan-sector" id="sector-trad" value="trad"
+                    style="accent-color:#f0883e; cursor:pointer;">
+                <span>🏭 傳產股</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none; font-size:0.92em; color:#c9d1d9;">
+                <input type="radio" name="scan-sector" id="sector-all" value="all"
+                    style="accent-color:#3fb950; cursor:pointer;">
+                <span>🌐 全市場</span>
+            </label>
+            <span id="sector-hint" style="font-size:0.78em; color:#8b949e;">（半導體、電腦、光電、通信、電子零組件、電子通路、資訊服務、其他電子）</span>
         </div>
 
         <main>

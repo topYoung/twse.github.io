@@ -137,9 +137,9 @@ def detect_consolidation(
 
 # ── 主掃描函式 ────────────────────────────────────────────────────────────────
 
-def get_consolidation_stocks(tech_only: bool = True) -> List[Dict[str, Any]]:
+def get_consolidation_stocks(tech_only: bool = True, trad_only: bool = False) -> List[Dict[str, Any]]:
     """
-    掃描全市場（或科技股），回傳盤整中 / 剛起漲的股票清單。
+    掃描全市場（或科技股/傳產股），回傳盤整中 / 剛起漲的股票清單。
     每支股票包含：盤整天數、箱型高低、近 5 日三大法人合計買賣超。
     """
     from app.services.categories import TECH_STOCKS, TRAD_STOCKS, STOCK_SUB_CATEGORIES, DELISTED_STOCKS
@@ -148,10 +148,10 @@ def get_consolidation_stocks(tech_only: bool = True) -> List[Dict[str, Any]]:
     from app.services.stock_data import get_yahoo_ticker
     from app.services.yf_rate_limiter import fetch_stock_history
 
-    # ── 1. 股票清單 ──
-    # TECH_STOCKS 已涵蓋所有電子科技業；tech_only 時不加 STOCK_SUB_CATEGORIES.keys()
-    # 因為 MANUAL_SUB_CATEGORIES 內含金融/航運/鋼鐵等非科技股
-    if tech_only:
+    # 股票清單選取
+    if trad_only:
+        all_codes = list(set(TRAD_STOCKS))
+    elif tech_only:
         all_codes = list(set(TECH_STOCKS))
     else:
         keys_from_map = list(STOCK_SUB_CATEGORIES.keys())

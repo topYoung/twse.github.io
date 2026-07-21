@@ -16,8 +16,16 @@ MANUAL_SUB_CATEGORIES = {
 
 # Technology Sector Categories to include
 TECH_SECTOR_NAMES = [
-    '半導體業', '電腦及週邊設備業', '光電業', '通信網路業', 
+    '半導體業', '電腦及週邊設備業', '光電業', '通信網路業',
     '電子零組件業', '電子通路業', '資訊服務業', '其他電子業'
+]
+
+# 傳統產業分類（排除金融、生技醫療）
+TRAD_SECTOR_NAMES = [
+    '水泥工業', '食品工業', '塑膠工業', '紡織纖維', '電機機械',
+    '電器電纜', '化學工業', '玻璃陶瓷', '造紙工業', '鋼鐵工業',
+    '橡膠工業', '汽車工業', '建材營造業', '航運業', '觀光餐旅業',
+    '其他業'
 ]
 
 DELISTED_STOCKS = [
@@ -28,38 +36,40 @@ def get_all_tech_stocks():
     stocks = []
     # Dynamic Map for fallback categories
     dynamic_map = {}
-    
+
     for code, info in twstock.codes.items():
         if info.type == '股票' and code not in DELISTED_STOCKS:
             # Check if in tech sectors
             if info.group in TECH_SECTOR_NAMES:
-                # Add suffix for yfinance
-                # Actually our system uses pure codes in these lists usually, and adds suffix in stock_data.py?
-                # Let's check `categories.py` format. It uses strings like '2330'.
                 stocks.append(code)
-                
                 # Create shorthand category (remove '業')
                 cat_name = info.group.replace('業', '')
                 dynamic_map[code] = cat_name
-                
+
     return stocks, dynamic_map
 
+
+def get_all_trad_stocks():
+    """動態從 twstock 取得全部傳產股（排除金融與生技）"""
+    stocks = []
+    dynamic_map = {}
+
+    for code, info in twstock.codes.items():
+        if info.type == '股票' and code not in DELISTED_STOCKS:
+            if info.group in TRAD_SECTOR_NAMES:
+                stocks.append(code)
+                cat_name = info.group.replace('業', '')
+                dynamic_map[code] = cat_name
+
+    return stocks, dynamic_map
+
+
 _tech_stocks, _tech_category_map = get_all_tech_stocks()
+_trad_stocks, _trad_category_map = get_all_trad_stocks()
 
 # Public Lists
 TECH_STOCKS = _tech_stocks
-
-# Traditional Sector (Cement, Plastics, Steel, Finance, Shipping, etc.)
-TRAD_STOCKS = [
-    '1101', '1301', '1303', '2002', '2881', '2882', '2891', '2886', '2884', '2885',
-    '2890', '2892', '5880', '2880', '2883', '2887', '1102', '1216', '1402', '1326',
-    '2105', '2603', '2609', '2615', '2912', '9904', '2049', '1907', '1717',
-    '2801', '2812', '2834', '2838', '2845', '2849', '2850', '2851', '2852', '2855',
-    '1103', '1104', '1108', '1109', '1110', '1201', '1203', '1210', '1213', '1215',
-    '1304', '1305', '1307', '1308', '1309', '1310', '1312', '1313', '1314', '1315',
-    '1409', '1410', '1413', '1414', '1416', '1417', '1418', '1419', '1423', '1432',
-    '1503', '1504', '1506', '1512', '1513', '1514', '1515', '1516', '1517'
-]
+TRAD_STOCKS = _trad_stocks
 
 MANUAL_SUB_CATEGORIES = {
     # === 半導體產業細分 ===
@@ -156,8 +166,9 @@ MANUAL_SUB_CATEGORIES = {
 
 
 # Final Category Map (Merge dynamic and manual)
-# Priority: Manual > Dynamic
+# Priority: Manual > Trad Dynamic > Tech Dynamic
 STOCK_SUB_CATEGORIES = _tech_category_map.copy()
+STOCK_SUB_CATEGORIES.update(_trad_category_map)
 STOCK_SUB_CATEGORIES.update(MANUAL_SUB_CATEGORIES)
 
 # ============================================================
