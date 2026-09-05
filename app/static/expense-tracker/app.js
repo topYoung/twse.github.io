@@ -345,6 +345,7 @@ function renderExpenses() {
 
     let total = 0;
     const categoryTotals = {}; // 記錄各主分類總和
+    const paymentTotals = {}; // 記錄各支付方式總和
 
     filteredExpenses.forEach(exp => {
         total += exp.amount;
@@ -354,6 +355,13 @@ function renderExpenses() {
             categoryTotals[exp.mainCat] = 0;
         }
         categoryTotals[exp.mainCat] += exp.amount;
+
+        // 累加支付方式金額
+        const pMethod = exp.paymentMethod || '其他';
+        if (!paymentTotals[pMethod]) {
+            paymentTotals[pMethod] = 0;
+        }
+        paymentTotals[pMethod] += exp.amount;
 
         const mainName = categoryData[exp.mainCat]?.name || exp.mainCat;
         const subName = categoryData[exp.mainCat]?.subcategories[exp.subCat] || exp.subCat;
@@ -406,6 +414,28 @@ function renderExpenses() {
             `;
             categoryBreakdown.appendChild(bdItem);
         });
+        
+    // 渲染支付方式統計區塊
+    const paymentBreakdown = document.getElementById('payment-breakdown');
+    if (paymentBreakdown) {
+        paymentBreakdown.innerHTML = '';
+        Object.entries(paymentTotals)
+            .sort((a, b) => b[1] - a[1]) // 金額由大到小排序
+            .forEach(([payKey, payAmount]) => {
+                const percentage = total > 0 ? (payAmount / total * 100).toFixed(1) : 0;
+    
+                const bdItem = document.createElement('div');
+                bdItem.className = 'breakdown-item';
+                bdItem.innerHTML = `
+                    <div class="breakdown-item-name" style="width: 100px;">${payKey}</div>
+                    <div class="breakdown-bar-container">
+                        <div class="breakdown-bar" style="width: ${percentage}%; background: linear-gradient(90deg, #10b981, #34d399);"></div>
+                    </div>
+                    <div>$${formatCurrency(payAmount)} (${percentage}%)</div>
+                `;
+                paymentBreakdown.appendChild(bdItem);
+            });
+    }
 }
 
 // 啟動應用程式
