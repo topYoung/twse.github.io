@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>質感記帳 (Expense Tracker)</title>
+    <!-- 引入 Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- 引入自訂 CSS -->
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+    <div class="background-elements">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <main class="app-container">
+        <!-- 左側：摘要與新增表單 -->
+        <section class="panel-left">
+            <header class="app-header">
+                <h1>質感記帳</h1>
+                <p>輕鬆管理您的日常支出</p>
+            </header>
+
+            <form id="expense-form" class="expense-form glass-panel">
+                <div class="form-group">
+                    <label for="amount">金額 (NT$)</label>
+                    <input type="number" id="amount" placeholder="0" min="0" required>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group half">
+                        <label for="date">日期</label>
+                        <input type="date" id="date" required>
+                    </div>
+                    <div class="form-group half">
+                        <label for="payment-method">支付方式</label>
+                        <select id="payment-method" required>
+                            <option value="信用卡" selected>信用卡</option>
+                            <option value="現金">現金</option>
+                            <option value="LINE Pay">LINE Pay</option>
+                            <option value="Apple Pay">Apple Pay</option>
+                            <option value="街口支付">街口支付</option>
+                            <option value="全支付">全支付</option>
+                            <option value="悠遊卡/電子票證">悠遊卡/電子票證</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group half">
+                        <label for="main-category">主分類</label>
+                        <select id="main-category" required>
+                            <option value="" disabled selected>請選擇</option>
+                            <!-- 由 JS 動態產生 -->
+                        </select>
+                    </div>
+                    <div class="form-group half">
+                        <label for="sub-category">次分類</label>
+                        <select id="sub-category" required disabled>
+                            <option value="" disabled selected>請先選擇主分類</option>
+                            <!-- 由 JS 動態產生 -->
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="note">備註 (選填)</label>
+                    <input type="text" id="note" placeholder="例如：麥當勞午餐">
+                </div>
+
+                <button type="submit" class="submit-btn">新增紀錄</button>
+            </form>
+
+            <div class="summary-card glass-panel">
+                <div class="summary-header">
+                    <h2 class="summary-title">月度報表</h2>
+                    <input type="month" id="month-selector" class="month-selector">
+                </div>
+                <div class="summary-amount">
+                    <span class="currency">NT$</span>
+                    <span id="total-amount">0</span>
+                </div>
+                <div id="category-breakdown" class="category-breakdown">
+                    <!-- JS 動態產生各分類加總 -->
+                </div>
+            </div>
+        </section>
+
+        <!-- 右側：歷史紀錄 -->
+        <section class="panel-right">
+            <div class="history-container glass-panel">
+                <div class="history-header">
+                    <h2>近期紀錄</h2>
+                    <div>
+                        <button id="export-csv-btn" class="text-btn" style="color: var(--primary-color); margin-right: 15px;">匯出 CSV</button>
+                        <button id="clear-data-btn" class="text-btn">清除全部</button>
+                    </div>
+                </div>
+                <div id="expense-list" class="expense-list">
+                    <!-- 紀錄項目由 JS 動態產生 -->
+                    <div class="empty-state">目前尚無紀錄</div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 引入自訂 JS -->
+    <script src="app.js"></script>
+</body>
+</html>
