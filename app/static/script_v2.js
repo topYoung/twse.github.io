@@ -1425,7 +1425,8 @@ async function runComprehensiveAnalysis() {
         'trend_radar': '/api/trend-radar-stocks',
         'trust_ratio': '/api/scanner/chips/trust-ratio',
         'dealer_buy': '/api/scanner/chips/dealer-buy',
-        'foreign_surge': '/api/scanner/chips/foreign-surge'
+        'foreign_surge': '/api/scanner/chips/foreign-surge',
+        'pe_ratio': '/api/scanner/value/pe-ratio?min_pe=10.0&max_pe=20.0'
     };
 
     try {
@@ -1679,6 +1680,92 @@ function closeHighDividendModal() {
     const modal = document.getElementById('high-dividend-modal');
     modal.classList.add('hidden');
 }
+
+// --- 本益比選股功能 (PE Ratio Scanner) ---
+
+async function openPeRatioModal() {
+    const modal = document.getElementById('pe-ratio-modal');
+    const loading = document.getElementById('pe-ratio-loading');
+    const container = document.getElementById('pe-ratio-list');
+
+    modal.classList.remove('hidden');
+    loading.classList.remove('hidden');
+    container.innerHTML = '';
+
+    try {
+        const response = await fetch('/api/scanner/value/pe-ratio?min_pe=10.0&max_pe=20.0');
+        const stocks = await response.json();
+
+        loading.classList.add('hidden');
+
+        if (stocks.error) {
+            container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #f85149;">${stocks.error}</div>`;
+            return;
+        }
+
+        if (!stocks || stocks.length === 0) {
+            container.innerHTML = '<div style="grid-column: 1/-1; text-align: center;">目前無符合條件的股票</div>';
+            return;
+        }
+
+        stocks.forEach(stock => {
+            const card = createPeRatioCard(stock);
+            container.appendChild(card);
+        });
+
+    } catch (error) {
+        console.error('Error fetching PE ratio stocks:', error);
+        loading.classList.add('hidden');
+        container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #f85149;">掃描失敗，請稍後重試</div>';
+    }
+}
+
+function closePeRatioModal() {
+    const modal = document.getElementById('pe-ratio-modal');
+    modal.classList.add('hidden');
+}
+
+function createPeRatioCard(stock) {
+    const card = document.createElement('div');
+    card.className = 'stock-card';
+    card.style.borderLeft = '4px solid #8957e5';
+
+    card.onclick = () => {
+        openChart(stock.code, stock.name, '價值選股');
+    };
+
+    card.innerHTML = `
+        <div class="card-header">
+            <div class="stock-identity">
+                <span class="stock-name">${stock.name}</span>
+                <span class="stock-code-small">${stock.code}</span>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                 <span class="layout-score score-high">本益比 ${stock.pe}</span>
+            </div>
+        </div>
+        
+        <div class="card-body">
+            <div class="price-info">
+                <div class="stock-price">${stock.close}</div>
+            </div>
+        </div>
+
+        <div class="layout-stats" style="margin-top: 12px;">
+            <div class="layout-stat-item">
+                <span class="stat-label">殖利率</span>
+                <span class="stat-value">${stock.yield}%</span>
+            </div>
+            <div class="layout-stat-item">
+                <span class="stat-label">淨值比</span>
+                <span class="stat-value">${stock.pb}</span>
+            </div>
+        </div>
+    `;
+    
+    return card;
+}
+
 
 function createHighDividendCard(stock) {
     const card = document.createElement('div');

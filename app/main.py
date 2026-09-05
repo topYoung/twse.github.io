@@ -219,6 +219,14 @@ async def api_high_dividend_stocks(min_yield: float = 3.0, top_n: int = 50):
     """
     return get_high_dividend_stocks(min_yield, top_n)
 
+@app.get("/api/scanner/value/pe-ratio")
+async def api_pe_ratio_stocks(min_pe: float = 10.0, max_pe: float = 20.0):
+    """
+    獲取本益比在指定範圍內的股票
+    """
+    from app.services.value_scanner import scan_pe_stocks
+    return scan_pe_stocks(min_pe, max_pe)
+
 @app.get("/api/momentum-stocks")
 async def api_momentum_stocks(min_days: int = 2):
     """

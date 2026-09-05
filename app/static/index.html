@@ -162,6 +162,11 @@
                             style="border: 1px solid #f85149; color: #f85149;">
                             <span class="icon">💰</span> 高股息
                         </button>
+                        <!-- PE Ratio Button -->
+                        <button class="investor-btn" onclick="openPeRatioModal()"
+                            style="border: 1px solid #8957e5; color: #8957e5;">
+                            <span class="icon">⚖️</span> 價值選股(本益比)
+                        </button>
                         <!-- Divergence Button -->
                         <button class="investor-btn" onclick="openDivergenceModal()"
                             style="border: 1px solid #a371f7; color: #a371f7;">
@@ -282,6 +287,9 @@
             </label>
             <label class="checkbox-label">
                 <input type="checkbox" name="strategy" value="foreign_surge"> ⚡ 外資突然大買
+            </label>
+            <label class="checkbox-label">
+                <input type="checkbox" name="strategy" value="pe_ratio"> ⚖️ 價值選股 (本益比)
             </label>
         </div>
     </div>
@@ -482,6 +490,21 @@
             </div>
         </div>
     </div>
+
+    <!-- 價值選股(本益比) Modal -->
+    <div id="pe-ratio-modal" class="modal hidden">
+        <div class="modal-content investor-modal-content" style="max-width: 1000px;">
+            <div class="modal-header">
+                <h2>⚖️ 價值選股 (本益比 10~20 倍)</h2>
+                <button class="close-modal-btn" onclick="closePeRatioModal()">✕</button>
+            </div>
+            <div id="pe-ratio-loading" class="loading-spinner hidden">正在掃描本益比...</div>
+            <div id="pe-ratio-list" class="stock-grid">
+                <!-- 列表將在這裡產生 -->
+            </div>
+        </div>
+    </div>
+
 
     <!-- 連漲強勢 Modal -->
     <div id="momentum-modal" class="modal hidden">
