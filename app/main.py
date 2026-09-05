@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from app.services.stock_data import get_market_index, get_filtered_stocks, get_stock_history, search_stock_code
 from app.services.layout_analyzer import get_all_investors_summary, get_layout_stocks, get_multi_investor_layout, get_major_investors_layout
 from app.services.breakout_scanner import get_breakout_stocks, get_rebound_stocks, get_downtrend_stocks
@@ -18,6 +18,11 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 @app.get("/")
 async def read_index():
     return FileResponse('app/static/index.html')
+
+@app.get("/money")
+async def goto_expense_tracker():
+    return RedirectResponse(url="/static/expense-tracker/index.html")
+
 
 @app.get("/api/health")
 async def health_check():
