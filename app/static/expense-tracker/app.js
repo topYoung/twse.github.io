@@ -58,7 +58,8 @@ const categoryData = {
         name: "其他/手續費",
         subcategories: {
             "fee": "銀行/手續費",
-            "refund": "折抵/退款"
+            "refund": "折抵/退款",
+            "tithe": "什一奉獻"
         }
     }
 };
