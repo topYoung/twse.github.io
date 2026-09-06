@@ -8,7 +8,7 @@ const categoryData = {
         subcategories: {
             "restaurant": "餐廳/外食",
             "fastfood": "速食/速食店",
-            "breakfast": "早餐/早午餐",
+            "breakfast": "早午晚餐",
             "cafe": "咖啡/飲料",
             "delivery": "外送平台"
         }
@@ -25,6 +25,7 @@ const categoryData = {
     "living": {
         name: "居家與生活",
         subcategories: {
+            "rent": "房租",
             "utilities": "水電瓦斯",
             "telecom": "電信/通訊",
             "grocery": "生鮮/超市",
