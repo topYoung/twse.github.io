@@ -13,6 +13,14 @@ const categoryData = {
             "delivery": "外送平台"
         }
     },
+    "clothing": {
+        name: "服飾與美容",
+        subcategories: {
+            "clothes": "衣物/鞋包",
+            "beauty": "美容/理髮/保養",
+            "accessories": "飾品/配件"
+        }
+    },
     "transport": {
         name: "交通",
         subcategories: {
