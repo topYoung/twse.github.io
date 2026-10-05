@@ -391,28 +391,28 @@ function renderExpenses() {
     // 過濾出當月紀錄
     const filteredExpenses = expenses.filter(exp => exp.date.startsWith(currentMonth));
 
-    // 計算累計現金與悠遊卡餘額 (依據所有歷史紀錄累計，真實反映錢包剩餘)
+    // 計算當月現金與悠遊卡餘額 (依據當前選擇月份統計)
     let totalCashWithdrawn = 0;
     let totalCashSpent = 0;
     let totalEasycardLoaded = 0;
     let totalEasycardSpent = 0;
 
-    expenses.forEach(exp => {
-        // 現金提領累加
+    filteredExpenses.forEach(exp => {
+        // 現金提領累加 (當月)
         if (exp.mainCat === 'transfer' && exp.subCat === 'cash_withdraw') {
             totalCashWithdrawn += exp.amount;
         }
-        // 現金支出扣除 (只要是現金支付的支出項目)
+        // 現金支出扣除 (當月只要是現金支付的支出項目)
         if (exp.mainCat !== 'income' && exp.mainCat !== 'transfer' && exp.paymentMethod === '現金') {
             totalCashSpent += exp.amount;
         }
 
-        // 悠遊卡加值累加 (可能是 transfer 的 easycard_topup，或 digital 的 wallet)
+        // 悠遊卡加值累加 (當月)
         if ((exp.mainCat === 'transfer' && exp.subCat === 'easycard_topup') ||
             (exp.mainCat === 'digital' && exp.subCat === 'wallet')) {
             totalEasycardLoaded += exp.amount;
         }
-        // 悠遊卡支出扣除 (只要是悠遊卡/電子票證支付的支出項目)
+        // 悠遊卡支出扣除 (當月只要是悠遊卡/電子票證支付的支出項目)
         if (exp.mainCat !== 'income' && exp.mainCat !== 'transfer' && 
             (exp.paymentMethod === '悠遊卡/電子票證' || exp.paymentMethod === '悠遊付')) {
             totalEasycardSpent += exp.amount;
@@ -427,7 +427,7 @@ function renderExpenses() {
         cashBalanceDisplay.className = `wallet-amount ${currentCashBalance < 0 ? 'negative' : ''}`;
     }
     if (cashHintDisplay) {
-        cashHintDisplay.textContent = `總提領 ${formatCurrency(totalCashWithdrawn)} - 現金支 ${formatCurrency(totalCashSpent)}`;
+        cashHintDisplay.textContent = `提領 ${formatCurrency(totalCashWithdrawn)} - 支出 ${formatCurrency(totalCashSpent)}`;
     }
 
     if (easycardBalanceDisplay) {
@@ -435,7 +435,7 @@ function renderExpenses() {
         easycardBalanceDisplay.className = `wallet-amount ${currentEasycardBalance < 0 ? 'negative' : ''}`;
     }
     if (easycardHintDisplay) {
-        easycardHintDisplay.textContent = `總加值 ${formatCurrency(totalEasycardLoaded)} - 票證支 ${formatCurrency(totalEasycardSpent)}`;
+        easycardHintDisplay.textContent = `加值 ${formatCurrency(totalEasycardLoaded)} - 支出 ${formatCurrency(totalEasycardSpent)}`;
     }
 
     if (filteredExpenses.length === 0) {
