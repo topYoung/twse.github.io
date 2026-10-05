@@ -1,10 +1,28 @@
 const SUPABASE_URL = 'https://zyetspnudlkojcqiwtao.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_e9BdBnsaKzy-aX3iXggpug_LJM18QPc';
 
-// 支出分類資料 (根據先前確認的結構)
+// 支出與收入/轉帳分類資料
 const categoryData = {
+    "income": {
+        name: "💰 收入",
+        type: "income",
+        subcategories: {
+            "salary": "薪水收入",
+            "parttime": "兼職收入",
+            "bonus": "獎金/其他收入"
+        }
+    },
+    "transfer": {
+        name: "🔄 提領/儲值 (轉帳)",
+        type: "transfer",
+        subcategories: {
+            "cash_withdraw": "現金提領 (銀行提款)",
+            "easycard_topup": "悠遊卡加值 (銀行扣款)"
+        }
+    },
     "food": {
         name: "飲食",
+        type: "expense",
         subcategories: {
             "restaurant": "餐廳/外食",
             "fastfood": "速食/速食店",
@@ -15,6 +33,7 @@ const categoryData = {
     },
     "clothing": {
         name: "服飾與美容",
+        type: "expense",
         subcategories: {
             "clothes": "衣物/鞋包",
             "beauty": "美容/理髮/保養",
@@ -23,6 +42,7 @@ const categoryData = {
     },
     "transport": {
         name: "交通",
+        type: "expense",
         subcategories: {
             "fuel": "加油",
             "public": "大眾運輸",
@@ -32,6 +52,7 @@ const categoryData = {
     },
     "living": {
         name: "居家與生活",
+        type: "expense",
         subcategories: {
             "rent": "房租",
             "utilities": "水電瓦斯",
@@ -43,6 +64,7 @@ const categoryData = {
     },
     "entertainment": {
         name: "休閒與旅遊",
+        type: "expense",
         subcategories: {
             "accommodation": "住宿/飯店",
             "activity": "休閒娛樂/景點"
@@ -50,6 +72,7 @@ const categoryData = {
     },
     "shopping": {
         name: "購物",
+        type: "expense",
         subcategories: {
             "online": "網購/綜合購物",
             "pet": "寵物用品"
@@ -57,6 +80,7 @@ const categoryData = {
     },
     "digital": {
         name: "數位與軟體",
+        type: "expense",
         subcategories: {
             "software": "軟體訂閱/服務",
             "wallet": "電子票證加值"
@@ -64,6 +88,7 @@ const categoryData = {
     },
     "misc": {
         name: "其他/手續費",
+        type: "expense",
         subcategories: {
             "fee": "銀行/手續費",
             "refund": "折抵/退款",
@@ -82,6 +107,12 @@ const subCategorySelect = document.getElementById('sub-category');
 const noteInput = document.getElementById('note');
 const expenseList = document.getElementById('expense-list');
 const totalAmountDisplay = document.getElementById('total-amount');
+const totalIncomeDisplay = document.getElementById('total-income');
+const totalBalanceDisplay = document.getElementById('total-balance');
+const cashBalanceDisplay = document.getElementById('cash-balance');
+const cashHintDisplay = document.getElementById('cash-hint');
+const easycardBalanceDisplay = document.getElementById('easycard-balance');
+const easycardHintDisplay = document.getElementById('easycard-hint');
 const monthSelector = document.getElementById('month-selector');
 const categoryBreakdown = document.getElementById('category-breakdown');
 const clearDataBtn = document.getElementById('clear-data-btn');
@@ -110,7 +141,7 @@ async function init() {
     await loadDataFromCloud();
 }
 
-// 主分類變更事件：連動次分類
+// 主分類變更事件：連動次分類與預設支付方式
 mainCategorySelect.addEventListener('change', (e) => {
     const mainKey = e.target.value;
 
@@ -125,6 +156,13 @@ mainCategorySelect.addEventListener('change', (e) => {
             option.value = subKey;
             option.textContent = subName;
             subCategorySelect.appendChild(option);
+        }
+
+        // 智慧帶入建議的支付/入帳方式
+        if (mainKey === 'income') {
+            paymentMethodSelect.value = '銀行轉帳';
+        } else if (mainKey === 'transfer') {
+            paymentMethodSelect.value = '銀行轉帳';
         }
     }
 });
@@ -246,20 +284,26 @@ exportCsvBtn.addEventListener('click', () => {
         return;
     }
 
-    const headers = ['日期', '主分類', '次分類', '支付方式', '金額', '備註'];
+    const headers = ['日期', '類型', '主分類', '次分類', '支付/入帳方式', '金額', '備註'];
     const csvRows = [headers.join(',')];
 
     // 依日期排序 (最新在最上)
     const sortedExpenses = [...expenses].sort((a, b) => new Date(b.date) - new Date(a.date));
 
     sortedExpenses.forEach(exp => {
+        const itemType = categoryData[exp.mainCat]?.type || 'expense';
+        let typeLabel = '支出';
+        if (itemType === 'income') typeLabel = '收入';
+        if (itemType === 'transfer') typeLabel = '提領/儲值';
+
         const mainName = categoryData[exp.mainCat]?.name || exp.mainCat;
-        const subName = categoryData[exp.mainCat]?.subcategories[exp.subCat] || exp.subCat;
+        const subName = categoryData[exp.mainCat]?.subcategories?.[exp.subCat] || exp.subCat;
         const note = exp.note ? `"${exp.note.replace(/"/g, '""')}"` : '';
 
         const row = [
             exp.date,
-            mainName,
+            typeLabel,
+            mainName.replace(/^[^\s]+\s/, ''), // 去除 Emoji 保持 CSV 清爽
             subName,
             exp.paymentMethod || '信用卡',
             exp.amount,
@@ -347,37 +391,93 @@ function renderExpenses() {
     // 過濾出當月紀錄
     const filteredExpenses = expenses.filter(exp => exp.date.startsWith(currentMonth));
 
+    // 計算累計現金與悠遊卡餘額 (依據所有歷史紀錄累計，真實反映錢包剩餘)
+    let totalCashWithdrawn = 0;
+    let totalCashSpent = 0;
+    let totalEasycardLoaded = 0;
+    let totalEasycardSpent = 0;
+
+    expenses.forEach(exp => {
+        // 現金提領累加
+        if (exp.mainCat === 'transfer' && exp.subCat === 'cash_withdraw') {
+            totalCashWithdrawn += exp.amount;
+        }
+        // 現金支出扣除 (只要是現金支付的支出項目)
+        if (exp.mainCat !== 'income' && exp.mainCat !== 'transfer' && exp.paymentMethod === '現金') {
+            totalCashSpent += exp.amount;
+        }
+
+        // 悠遊卡加值累加 (可能是 transfer 的 easycard_topup，或 digital 的 wallet)
+        if ((exp.mainCat === 'transfer' && exp.subCat === 'easycard_topup') ||
+            (exp.mainCat === 'digital' && exp.subCat === 'wallet')) {
+            totalEasycardLoaded += exp.amount;
+        }
+        // 悠遊卡支出扣除 (只要是悠遊卡/電子票證支付的支出項目)
+        if (exp.mainCat !== 'income' && exp.mainCat !== 'transfer' && 
+            (exp.paymentMethod === '悠遊卡/電子票證' || exp.paymentMethod === '悠遊付')) {
+            totalEasycardSpent += exp.amount;
+        }
+    });
+
+    const currentCashBalance = totalCashWithdrawn - totalCashSpent;
+    const currentEasycardBalance = totalEasycardLoaded - totalEasycardSpent;
+
+    if (cashBalanceDisplay) {
+        cashBalanceDisplay.textContent = `NT$ ${formatCurrency(currentCashBalance)}`;
+        cashBalanceDisplay.className = `wallet-amount ${currentCashBalance < 0 ? 'negative' : ''}`;
+    }
+    if (cashHintDisplay) {
+        cashHintDisplay.textContent = `總提領 ${formatCurrency(totalCashWithdrawn)} - 現金支 ${formatCurrency(totalCashSpent)}`;
+    }
+
+    if (easycardBalanceDisplay) {
+        easycardBalanceDisplay.textContent = `NT$ ${formatCurrency(currentEasycardBalance)}`;
+        easycardBalanceDisplay.className = `wallet-amount ${currentEasycardBalance < 0 ? 'negative' : ''}`;
+    }
+    if (easycardHintDisplay) {
+        easycardHintDisplay.textContent = `總加值 ${formatCurrency(totalEasycardLoaded)} - 票證支 ${formatCurrency(totalEasycardSpent)}`;
+    }
+
     if (filteredExpenses.length === 0) {
         expenseList.innerHTML = '<div class="empty-state">本月尚無紀錄</div>';
-        totalAmountDisplay.textContent = '0';
+        if (totalAmountDisplay) totalAmountDisplay.textContent = 'NT$ 0';
+        if (totalIncomeDisplay) totalIncomeDisplay.textContent = 'NT$ 0';
+        if (totalBalanceDisplay) totalBalanceDisplay.textContent = 'NT$ 0';
         return;
     }
 
-    let total = 0;
-    const categoryTotals = {}; // 記錄各主分類總和
-    const paymentTotals = {}; // 記錄各支付方式總和
+    let totalExpense = 0;
+    let totalIncome = 0;
+    const categoryTotals = {}; // 記錄各支出主分類總和
+    const paymentTotals = {}; // 記錄各支出支付方式總和
 
     filteredExpenses.forEach(exp => {
-        total += exp.amount;
+        const itemType = categoryData[exp.mainCat]?.type || 'expense';
 
-        // 累加分類金額
-        if (!categoryTotals[exp.mainCat]) {
-            categoryTotals[exp.mainCat] = 0;
-        }
-        categoryTotals[exp.mainCat] += exp.amount;
+        if (itemType === 'income') {
+            totalIncome += exp.amount;
+        } else if (itemType === 'expense') {
+            totalExpense += exp.amount;
 
-        // 累加支付方式金額
-        const pMethod = exp.paymentMethod || '其他';
-        if (!paymentTotals[pMethod]) {
-            paymentTotals[pMethod] = 0;
+            // 累加分類金額
+            if (!categoryTotals[exp.mainCat]) {
+                categoryTotals[exp.mainCat] = 0;
+            }
+            categoryTotals[exp.mainCat] += exp.amount;
+
+            // 累加支付方式金額
+            const pMethod = exp.paymentMethod || '其他';
+            if (!paymentTotals[pMethod]) {
+                paymentTotals[pMethod] = 0;
+            }
+            paymentTotals[pMethod] += exp.amount;
         }
-        paymentTotals[pMethod] += exp.amount;
 
         const mainName = categoryData[exp.mainCat]?.name || exp.mainCat;
-        const subName = categoryData[exp.mainCat]?.subcategories[exp.subCat] || exp.subCat;
+        const subName = categoryData[exp.mainCat]?.subcategories?.[exp.subCat] || exp.subCat;
 
         const item = document.createElement('div');
-        item.className = 'expense-item';
+        item.className = `expense-item item-type-${itemType}`;
 
         // 組合顯示文字
         let titleText = `${mainName} - ${subName}`;
@@ -385,17 +485,31 @@ function renderExpenses() {
             titleText += ` (${exp.note})`;
         }
 
+        let typeBadge = '';
+        let amountPrefix = '-$';
+        let amountClass = 'item-amount expense';
+
+        if (itemType === 'income') {
+            typeBadge = '<span class="badge badge-income">收入</span>';
+            amountPrefix = '+$';
+            amountClass = 'item-amount income';
+        } else if (itemType === 'transfer') {
+            typeBadge = '<span class="badge badge-transfer">提領/儲值</span>';
+            amountPrefix = '$';
+            amountClass = 'item-amount transfer';
+        }
+
         item.innerHTML = `
             <div class="item-info">
-                <div class="item-category">${titleText}</div>
+                <div class="item-category">${typeBadge}${titleText}</div>
                 <div class="item-sub-info">
                     <span class="item-date">${exp.date}</span>
                     <span class="item-date">${exp.paymentMethod || '信用卡'}</span>
                 </div>
             </div>
             <div style="display: flex; align-items: center; gap: 10px;">
-                <div class="item-amount">
-                    $${formatCurrency(exp.amount)}
+                <div class="${amountClass}">
+                    ${amountPrefix}${formatCurrency(exp.amount)}
                 </div>
                 <button class="delete-btn" onclick="deleteExpense('${exp.id}')" title="刪除此筆">×</button>
             </div>
@@ -404,14 +518,21 @@ function renderExpenses() {
         expenseList.appendChild(item);
     });
 
-    totalAmountDisplay.textContent = formatCurrency(total);
+    const netBalance = totalIncome - totalExpense;
 
-    // 渲染報表區塊
+    if (totalAmountDisplay) totalAmountDisplay.textContent = `NT$ ${formatCurrency(totalExpense)}`;
+    if (totalIncomeDisplay) totalIncomeDisplay.textContent = `NT$ ${formatCurrency(totalIncome)}`;
+    if (totalBalanceDisplay) {
+        totalBalanceDisplay.textContent = `NT$ ${formatCurrency(netBalance)}`;
+        totalBalanceDisplay.className = `stat-value ${netBalance >= 0 ? 'positive' : 'negative'}`;
+    }
+
+    // 渲染支出分類報表區塊
     Object.entries(categoryTotals)
         .sort((a, b) => b[1] - a[1]) // 金額由大到小排序
         .forEach(([catKey, catAmount]) => {
             const catName = categoryData[catKey]?.name || catKey;
-            const percentage = total > 0 ? (catAmount / total * 100).toFixed(1) : 0;
+            const percentage = totalExpense > 0 ? (catAmount / totalExpense * 100).toFixed(1) : 0;
 
             const bdItem = document.createElement('div');
             bdItem.className = 'breakdown-item';
@@ -432,7 +553,7 @@ function renderExpenses() {
         Object.entries(paymentTotals)
             .sort((a, b) => b[1] - a[1]) // 金額由大到小排序
             .forEach(([payKey, payAmount]) => {
-                const percentage = total > 0 ? (payAmount / total * 100).toFixed(1) : 0;
+                const percentage = totalExpense > 0 ? (payAmount / totalExpense * 100).toFixed(1) : 0;
     
                 const bdItem = document.createElement('div');
                 bdItem.className = 'breakdown-item';

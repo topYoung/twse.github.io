@@ -79,19 +79,55 @@
 
             <div class="summary-card glass-panel">
                 <div class="summary-header">
-                    <h2 class="summary-title">月度報表</h2>
+                    <h2 class="summary-title">月度收支報表</h2>
                     <input type="month" id="month-selector" class="month-selector">
                 </div>
-                <div class="summary-amount">
-                    <span class="currency">NT$</span>
-                    <span id="total-amount">0</span>
+                
+                <!-- 核心收支摘要 -->
+                <div class="summary-overview">
+                    <div class="summary-stat income">
+                        <span class="stat-label">本月收入</span>
+                        <span class="stat-value" id="total-income">NT$ 0</span>
+                    </div>
+                    <div class="summary-stat expense">
+                        <span class="stat-label">本月支出</span>
+                        <span class="stat-value" id="total-amount">NT$ 0</span>
+                    </div>
+                    <div class="summary-stat balance">
+                        <span class="stat-label">本月結餘</span>
+                        <span class="stat-value" id="total-balance">NT$ 0</span>
+                    </div>
                 </div>
-                <div id="category-breakdown" class="category-breakdown">
-                    <!-- JS 動態產生各分類加總 -->
+
+                <!-- 帳戶餘額追蹤 (現金 / 悠遊卡) -->
+                <div class="wallet-balances">
+                    <div class="wallet-item">
+                        <div class="wallet-header">
+                            <span class="wallet-icon">💵</span>
+                            <span class="wallet-title">現金剩餘</span>
+                        </div>
+                        <span class="wallet-amount" id="cash-balance">NT$ 0</span>
+                        <span class="wallet-hint" id="cash-hint">提領 0 - 支出 0</span>
+                    </div>
+                    <div class="wallet-item">
+                        <div class="wallet-header">
+                            <span class="wallet-icon">💳</span>
+                            <span class="wallet-title">悠遊卡剩餘</span>
+                        </div>
+                        <span class="wallet-amount" id="easycard-balance">NT$ 0</span>
+                        <span class="wallet-hint" id="easycard-hint">儲值 0 - 支出 0</span>
+                    </div>
+                </div>
+
+                <div style="margin-top: 10px;">
+                    <h3 style="font-size: 14px; font-weight: 500; margin-bottom: 12px; color: var(--text-main); border-top: 1px solid rgba(0, 0, 0, 0.06); padding-top: 15px;">支出分類統計</h3>
+                    <div id="category-breakdown" class="category-breakdown">
+                        <!-- JS 動態產生各分類加總 -->
+                    </div>
                 </div>
                 
-                <div style="margin-top: 25px;">
-                    <h3 style="font-size: 14px; font-weight: 500; margin-bottom: 12px; color: var(--text-color); border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 15px;">支付方式統計</h3>
+                <div style="margin-top: 15px;">
+                    <h3 style="font-size: 14px; font-weight: 500; margin-bottom: 12px; color: var(--text-main); border-top: 1px solid rgba(0, 0, 0, 0.06); padding-top: 15px;">支付方式統計</h3>
                     <div id="payment-breakdown" class="category-breakdown">
                         <!-- JS 動態產生各支付方式加總 -->
                     </div>
